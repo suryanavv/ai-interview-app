@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -441,8 +440,8 @@ export function IntervieweeTab() {
   // If feedback completion is shown, display the completion screen
   if (showFeedbackCompletion) {
     return (
-      <Card className="w-full max-w-4xl mx-auto">
-        <CardContent className="flex flex-col items-center justify-center py-8 space-y-4">
+      <div className="w-full max-w-4xl mx-auto p-6">
+        <div className="flex flex-col items-center justify-center py-8 space-y-4">
           <div className="text-center space-y-3">
             <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
               <CheckCircle className="h-6 w-6 text-green-600" />
@@ -456,12 +455,12 @@ export function IntervieweeTab() {
           <Button
             onClick={returnToHome}
             size="sm"
-            className="px-6"
+            className="px-6 cursor-pointer"
           >
             Return to Home
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
@@ -495,17 +494,17 @@ export function IntervieweeTab() {
             </DialogDescription>
           </DialogHeader>
 
-          <Card>
-            <CardHeader className="pb-2">
+          <div className="border rounded-lg p-4">
+            <div className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">{unfinishedSession.name}</CardTitle>
+                <h3 className="text-base font-semibold">{unfinishedSession.name}</h3>
                 <Badge className={getStatusColor(unfinishedSession.interviewStatus)}>
                   {unfinishedSession.interviewStatus.replace('_', ' ')}
                 </Badge>
               </div>
-              <CardDescription className="text-xs">{unfinishedSession.email}</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
+              <p className="text-xs text-muted-foreground">{unfinishedSession.email}</p>
+            </div>
+            <div className="pt-0">
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Progress:</span>
@@ -520,15 +519,15 @@ export function IntervieweeTab() {
                   <span>{unfinishedSession.startTime ? new Date(unfinishedSession.startTime).toLocaleString() : 'N/A'}</span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           <div className="flex space-x-2">
-            <Button onClick={handleResumeInterview} size="sm" className="flex-1">
+            <Button onClick={handleResumeInterview} size="sm" className="flex-1 cursor-pointer">
               <Play className="h-3 w-3 mr-1" />
               Resume Interview
             </Button>
-            <Button variant="outline" onClick={handleStartNew} size="sm" className="flex-1">
+            <Button variant="outline" onClick={handleStartNew} size="sm" className="flex-1 cursor-pointer">
               Start New Interview
             </Button>
           </div>
@@ -545,11 +544,11 @@ export function IntervieweeTab() {
 
     return (
       <>
-        <Card className="w-full max-w-4xl mx-auto">
-          <CardHeader className="pb-3">
+        <div className="w-full mx-auto">
+          <div className="pb-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-1 sm:space-y-0">
               <div>
-                <CardTitle className="text-base">AI Interview Assessment</CardTitle>
+                <h2 className="text-base font-semibold">AI Interview Assessment</h2>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <span>
@@ -562,8 +561,8 @@ export function IntervieweeTab() {
                 <span>{displayCandidate?.email}</span>
               </div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          </div>
+          <div className="space-y-4">
 
             {/* Question Section */}
             <div className="space-y-3">
@@ -594,9 +593,9 @@ export function IntervieweeTab() {
                   value={currentAnswer}
                   onChange={(e) => setCurrentAnswer(e.target.value)}
                   placeholder="Type your answer here..."
-                  rows={8}
-                  className="min-h-[150px] resize-y text-sm"
-                  style={{ minHeight: 150, maxHeight: 400 }}
+                  rows={14}
+                  className="min-h-[350px] resize-y text-sm"
+                  style={{ minHeight: 250, maxHeight: 600 }}
                 />
                 <div className="flex items-center justify-between pt-1">
                   <span className="text-xs text-muted-foreground">
@@ -606,6 +605,7 @@ export function IntervieweeTab() {
                     onClick={handleSubmitAnswer}
                     disabled={!currentAnswer.trim()}
                     size="sm"
+                    className="cursor-pointer"
                   >
                     <Send className="h-3 w-3 mr-1" />
                     Submit Answer
@@ -620,8 +620,8 @@ export function IntervieweeTab() {
                 {6 - (displayCandidate?.currentQuestionIndex || 0) - 1} questions remaining
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
       </>
     )
@@ -631,8 +631,8 @@ export function IntervieweeTab() {
   // Default view - Resume upload and setup
   return (
     <>
-      <Card className="w-full max-w-4xl mx-auto">
-        <CardContent className="space-y-4">
+      <div className="w-full mx-auto">
+        <div className="space-y-4">
           {/* Reset Message */}
           {showResetMessage && (
             <Alert className="py-2">
@@ -646,7 +646,7 @@ export function IntervieweeTab() {
           {/* Resume Upload Section */}
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label className="text-base font-semibold">Smart Resume Analysis</Label>
+              <Label className="text-lg font-semibold">Smart Resume Analysis</Label>
               <p className="text-xs text-muted-foreground">
                 Upload your resume for AI-powered information extraction and personalized interview preparation
               </p>
@@ -656,14 +656,12 @@ export function IntervieweeTab() {
               <div className="relative w-full mx-auto">
                 {/* Drop area */}
                 <div
-                  role="button"
-                  onClick={openFileDialog}
                   onDragEnter={handleDragEnter}
                   onDragLeave={handleDragLeave}
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
                   data-dragging={isDragging || undefined}
-                  className="border-input hover:bg-accent/50 data-[dragging=true]:bg-accent/50 has-[input:focus]:border-ring has-[input:focus]:ring-ring/50 has-disabled:pointer-events-none has-disabled:opacity-50 has-[img]:border-none has-[input:focus]:ring-[3px] relative flex min-h-38 flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed p-3 transition-colors"
+                  className="border-input hover:bg-accent/40 data-[dragging=true]:bg-accent/40 has-[input:focus]:border-ring has-[input:focus]:ring-ring/50 has-disabled:pointer-events-none has-disabled:opacity-50 has-[img]:border-none has-[input:focus]:ring-[3px] relative flex min-h-64 flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed p-3 transition-colors"
                 >
                   <input
                     {...getInputProps()}
@@ -694,11 +692,18 @@ export function IntervieweeTab() {
                         <Upload className="size-3 opacity-60" />
                       </div>
                       <p className="mb-1 text-xs font-medium">
-                        Drop your resume here or click to browse
+                        Drop your resume here
                       </p>
                       <p className="text-muted-foreground text-xs">
                         PDF, DOCX supported • Max {maxSizeMB}MB • AI-powered analysis
                       </p>
+                      <button
+                        type="button"
+                        className="mt-2 px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors cursor-pointer"
+                        onClick={openFileDialog}
+                      >
+                        Choose File
+                      </button>
                     </div>
                   )}
                 </div>
@@ -706,7 +711,7 @@ export function IntervieweeTab() {
                   <div className="absolute top-4 right-4">
                     <button
                       type="button"
-                      className="focus-visible:border-ring focus-visible:ring-ring/50 z-50 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/60 text-white transition-[color,box-shadow] outline-none hover:bg-black/80 focus-visible:ring-[3px]"
+                      className="focus-visible:border-ring focus-visible:ring-ring/50 z-50 flex size-8 items-center justify-center rounded-full bg-black/60 text-white transition-[color,box-shadow] outline-none hover:bg-black/80 focus-visible:ring-[3px] cursor-pointer"
                       onClick={handleRemoveFile}
                       aria-label="Remove resume"
                     >
@@ -743,7 +748,7 @@ export function IntervieweeTab() {
           {extractedData && !isProcessing && (
             <div className="space-y-3">
               <h4 className="text-base font-semibold">Profile Information</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 {(['name', 'email', 'phone'] as const).map((field) => {
                   const fieldStatus = getFieldStatus(field)
                   const fieldLabels = { name: 'Full Name', email: 'Email Address', phone: 'Phone Number' }
@@ -792,12 +797,12 @@ export function IntervieweeTab() {
 
           {/* Ready to Start Interview */}
           {canStartInterview && (
-            <Alert className="py-2">
-              <CheckCircle className="h-3 w-3" />
-              <AlertDescription className="text-sm">
+            // <div>
+              <span className="text-sm flex items-center gap-2">
+                <CheckCircle className="h-3 w-3 text-green-600" />
                 All information collected. Ready to begin the interview.
-              </AlertDescription>
-            </Alert>
+              </span>
+            // </div>
           )}
 
           <div className="space-y-2 flex justify-center">
@@ -805,14 +810,14 @@ export function IntervieweeTab() {
               disabled={!canStartInterview || isInterviewActive}
               onClick={handleStartInterview}
               size="sm"
-              className="px-6 text-sm"
+              className="px-6 text-sm cursor-pointer"
             >
               {isInterviewActive ? "Assessment in Progress" : "Begin Assessment"}
             </Button>
 
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
     </>
   )

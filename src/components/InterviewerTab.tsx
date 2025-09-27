@@ -1,6 +1,6 @@
 "use client"
 
-import { useId, useMemo, useRef, useState } from "react"
+import { useEffect, useId, useMemo, useRef, useState } from "react"
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -9,24 +9,17 @@ import {
   getCoreRowModel,
   getFacetedUniqueValues,
   getFilteredRowModel,
-  getPaginationRowModel,
   getSortedRowModel,
-  type PaginationState,
   type Row,
   type SortingState,
   useReactTable,
   type VisibilityState,
 } from "@tanstack/react-table"
 import {
-  ChevronDownIcon,
-  ChevronFirstIcon,
-  ChevronLastIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronUpIcon,
+  ArrowDownIcon,
+  ArrowUpIcon,
   CircleAlertIcon,
   CircleXIcon,
-  EllipsisIcon,
   EyeIcon,
   FilterIcon,
   SearchIcon,
@@ -48,7 +41,6 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -58,14 +50,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -73,13 +57,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -89,6 +66,14 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useInterviewStore, type Candidate } from "@/store/interviewStore"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 // Custom filter function for multi-column searching
 const multiColumnFilterFn: FilterFn<Candidate> = (row, _columnId, filterValue) => {
@@ -117,14 +102,14 @@ const getDifficultyColor = (difficulty: string) => {
   }
 }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "completed": return "bg-primary/10 text-primary"
-      case "in_progress": return "bg-secondary/10 text-secondary-foreground"
-      case "paused": return "bg-muted text-muted-foreground"
-      default: return "bg-muted text-muted-foreground"
-    }
+const getStatusColor = (status: string) => {
+  switch (status) {
+    case "completed": return "bg-primary/10 text-primary"
+    case "in_progress": return "bg-secondary/10 text-secondary-foreground"
+    case "paused": return "bg-muted text-muted-foreground"
+    default: return "bg-muted text-muted-foreground"
   }
+}
 
 const formatTime = (milliseconds: number) => {
   const seconds = Math.floor(milliseconds / 1000)
@@ -209,7 +194,6 @@ const columns: ColumnDef<Candidate>[] = [
       const totalTime = row.getValue("totalTime") as number | undefined
       return (
         <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-          <div className="h-4 w-4 rounded-full bg-muted" />
           <span>{totalTime ? formatTime(totalTime) : '-'}</span>
         </div>
       )
@@ -224,7 +208,6 @@ const columns: ColumnDef<Candidate>[] = [
       const startTime = row.getValue("startTime") as Date | undefined
       return (
         <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-          <div className="h-4 w-4 rounded-full bg-muted" />
           <span>{startTime ? new Date(startTime).toLocaleDateString() : '-'}</span>
         </div>
       )
@@ -246,12 +229,8 @@ export function InterviewerTab() {
   const id = useId()
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    totalTime: false,
-    startTime: false,
-  })
-  const [pagination, setPagination] = useState<PaginationState>({
-    pageIndex: 0,
-    pageSize: 10,
+    totalTime: true,
+    startTime: true,
   })
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -262,7 +241,25 @@ export function InterviewerTab() {
     },
   ])
 
+  const [selectedSortField, setSelectedSortField] = useState<string>("finalScore")
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
+  const [sortingEnabled, setSortingEnabled] = useState<boolean>(true)
+
   const { candidates, deleteCandidate } = useInterviewStore()
+
+  // Sync sorting state with selected field and direction
+  useEffect(() => {
+    if (sortingEnabled) {
+      setSorting([
+        {
+          id: selectedSortField,
+          desc: sortDirection === "desc",
+        },
+      ])
+    } else {
+      setSorting([])
+    }
+  }, [selectedSortField, sortDirection, sortingEnabled])
 
   const handleDeleteRows = () => {
     const selectedRows = table.getSelectedRowModel().rows
@@ -279,15 +276,12 @@ export function InterviewerTab() {
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
     enableSortingRemoval: false,
-    getPaginationRowModel: getPaginationRowModel(),
-    onPaginationChange: setPagination,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
     getFilteredRowModel: getFilteredRowModel(),
     getFacetedUniqueValues: getFacetedUniqueValues(),
     state: {
       sorting,
-      pagination,
       columnFilters,
       columnVisibility,
     },
@@ -335,23 +329,22 @@ export function InterviewerTab() {
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-4">
+    <div className="w-fullmx-auto space-y-4">
       {/* Candidates List */}
-      <Card>
-        <CardHeader className="pb-3">
+      <div className="">
+        <div className="pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0">
             <div>
-              <CardTitle className="flex items-center space-x-2 text-lg">
-                <div className="h-4 w-4 rounded bg-muted" />
+              <h2 className="flex items-center space-x-2 text-lg font-semibold">
                 <span>Candidates ({table.getFilteredRowModel().rows.length})</span>
-              </CardTitle>
-              <CardDescription className="text-sm">
+              </h2>
+              <p className="text-sm text-muted-foreground">
                 View all interview candidates ordered by score
-              </CardDescription>
+              </p>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div>
           {/* Filters */}
           <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-3">
@@ -379,7 +372,7 @@ export function InterviewerTab() {
                 </div>
                 {Boolean(table.getColumn("name")?.getFilterValue()) && (
                   <button
-                    className="text-muted-foreground/80 hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-[color,box-shadow] outline-none focus:z-10 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed"
+                    className="text-muted-foreground/80 hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-[color,box-shadow] outline-none focus:z-10 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed cursor-pointer"
                     aria-label="Clear filter"
                     onClick={() => {
                       table.getColumn("name")?.setFilterValue("")
@@ -439,13 +432,80 @@ export function InterviewerTab() {
                   </div>
                 </PopoverContent>
               </Popover>
+              {/* Sort by dropdown */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="cursor-pointer">
+                    Sort by: {sortingEnabled ? (selectedSortField === "name" ? "Name" : selectedSortField === "finalScore" ? "Score" : selectedSortField === "startTime" ? "Date" : selectedSortField === "totalTime" ? "Duration" : "Score") : "None"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedSortField("name")
+                      setSortingEnabled(true)
+                    }}
+                    className={sortingEnabled && selectedSortField === "name" ? "bg-accent" : ""}
+                  >
+                    Name
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedSortField("finalScore")
+                      setSortingEnabled(true)
+                    }}
+                    className={sortingEnabled && selectedSortField === "finalScore" ? "bg-accent" : ""}
+                  >
+                    Score
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedSortField("startTime")
+                      setSortingEnabled(true)
+                    }}
+                    className={sortingEnabled && selectedSortField === "startTime" ? "bg-accent" : ""}
+                  >
+                    Date
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setSelectedSortField("totalTime")
+                      setSortingEnabled(true)
+                    }}
+                    className={sortingEnabled && selectedSortField === "totalTime" ? "bg-accent" : ""}
+                  >
+                    Duration
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setSortingEnabled(false)}
+                    className={!sortingEnabled ? "bg-accent" : ""}
+                  >
+                    Clear sorting
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {/* Sort direction arrow */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}
+                disabled={!sortingEnabled}
+                className="px-2 cursor-pointer"
+              >
+                {sortDirection === "asc" ? (
+                  <ArrowUpIcon size={14} />
+                ) : (
+                  <ArrowDownIcon size={14} />
+                )}
+              </Button>
             </div>
             <div className="flex items-center gap-3">
               {/* Delete button */}
               {table.getSelectedRowModel().rows.length > 0 && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button className="ml-auto" variant="outline" size="sm">
+                    <Button className="ml-auto text-destructive hover:text-destructive border-destructive/20 hover:bg-destructive/20 cursor-pointer" variant="outline" size="sm">
                       <TrashIcon
                         className="-ms-1 opacity-60"
                         size={14}
@@ -460,16 +520,16 @@ export function InterviewerTab() {
                   <AlertDialogContent>
                     <div className="flex flex-col gap-2 max-sm:items-center sm:flex-row sm:gap-4">
                       <div
-                        className="flex size-9 shrink-0 items-center justify-center rounded-full border"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive"
                         aria-hidden="true"
                       >
-                        <CircleAlertIcon className="opacity-80" size={16} />
+                        <CircleAlertIcon className="opacity-80 text-destructive" size={16} />
                       </div>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>
+                        <AlertDialogTitle className="text-destructive">
                           Are you absolutely sure?
                         </AlertDialogTitle>
-                        <AlertDialogDescription>
+                        <AlertDialogDescription className="text-destructive/80">
                           This action cannot be undone. This will permanently delete{" "}
                           {table.getSelectedRowModel().rows.length} selected{" "}
                           {table.getSelectedRowModel().rows.length === 1
@@ -481,7 +541,10 @@ export function InterviewerTab() {
                     </div>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteRows}>
+                      <AlertDialogAction
+                        onClick={handleDeleteRows}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
                         Delete
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -492,9 +555,9 @@ export function InterviewerTab() {
           </div>
 
           {/* Table */}
-          <div className="bg-background overflow-hidden rounded-md border">
+          <div className="relative">
             <Table className="table-fixed">
-              <TableHeader>
+              <TableHeader className="sticky top-0 z-10 bg-background border-b">
                 {table.getHeaderGroups().map((headerGroup) => (
                   <TableRow key={headerGroup.id} className="hover:bg-transparent">
                     {headerGroup.headers.map((header) => {
@@ -502,198 +565,61 @@ export function InterviewerTab() {
                         <TableHead
                           key={header.id}
                           style={{ width: `${header.getSize()}px` }}
-                          className="h-9 text-xs"
+                          className="h-9 text-xs sticky top-0 bg-background z-10"
                         >
-                          {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                            <div
-                              className={cn(
-                                header.column.getCanSort() &&
-                                  "flex h-full cursor-pointer items-center justify-between gap-2 select-none"
-                              )}
-                              onClick={header.column.getToggleSortingHandler()}
-                              onKeyDown={(e) => {
-                                // Enhanced keyboard handling for sorting
-                                if (
-                                  header.column.getCanSort() &&
-                                  (e.key === "Enter" || e.key === " ")
-                                ) {
-                                  e.preventDefault()
-                                  header.column.getToggleSortingHandler()?.(e)
-                                }
-                              }}
-                              tabIndex={header.column.getCanSort() ? 0 : undefined}
-                            >
-                              {flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
-                              {{
-                                asc: (
-                                  <ChevronUpIcon
-                                    className="shrink-0 opacity-60"
-                                    size={16}
-                                    aria-hidden="true"
-                                  />
-                                ),
-                                desc: (
-                                  <ChevronDownIcon
-                                    className="shrink-0 opacity-60"
-                                    size={16}
-                                    aria-hidden="true"
-                                  />
-                                ),
-                              }[header.column.getIsSorted() as string] ?? null}
-                            </div>
-                          ) : (
-                            flexRender(
-                              header.column.columnDef.header,
-                              header.getContext()
-                            )
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
                           )}
                         </TableHead>
                       )
                     })}
-                </TableRow>
+                  </TableRow>
                 ))}
               </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      data-state={row.getIsSelected() && "selected"}
-                      className="h-8"
-                    >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="last:py-0 py-1 text-xs">
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext()
-                          )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={columns.length}
-                      className="h-16 text-center text-sm"
-                    >
-                      No results.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
             </Table>
-                      </div>
-
-          {/* Pagination */}
-          <div className="flex items-center justify-between gap-4 mt-3">
-            {/* Results per page */}
-            <div className="flex items-center gap-2">
-              <Label htmlFor={id} className="max-sm:sr-only text-xs">
-                Rows per page
-              </Label>
-              <Select
-                value={table.getState().pagination.pageSize.toString()}
-                onValueChange={(value) => {
-                  table.setPageSize(Number(value))
-                }}
-              >
-                <SelectTrigger id={id} className="w-fit whitespace-nowrap h-8 text-xs">
-                  <SelectValue placeholder="Select number of results" />
-                </SelectTrigger>
-                <SelectContent className="[&_*[role=option]]:ps-2 [&_*[role=option]]:pe-8 [&_*[role=option]>span]:start-auto [&_*[role=option]>span]:end-2">
-                  {[5, 10, 25, 50].map((pageSize) => (
-                    <SelectItem key={pageSize} value={pageSize.toString()}>
-                      {pageSize}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-                        </div>
-            {/* Page number information */}
-            <div className="text-muted-foreground flex grow justify-end text-xs whitespace-nowrap">
-              <p
-                className="text-muted-foreground text-xs whitespace-nowrap"
-                aria-live="polite"
-              >
-                <span className="text-foreground">
-                  {table.getState().pagination.pageIndex *
-                    table.getState().pagination.pageSize +
-                    1}
-                  -
-                  {Math.min(
-                    Math.max(
-                      table.getState().pagination.pageIndex *
-                        table.getState().pagination.pageSize +
-                        table.getState().pagination.pageSize,
-                      0
-                    ),
-                    table.getRowCount()
+            <ScrollArea className="h-94 bg-background">
+              <Table className="table-fixed">
+                <TableBody>
+                  {table.getRowModel().rows?.length ? (
+                    table.getRowModel().rows.map((row) => (
+                      <TableRow
+                        key={row.id}
+                        data-state={row.getIsSelected() && "selected"}
+                        className="h-8"
+                      >
+                        {row.getVisibleCells().map((cell) => (
+                          <TableCell
+                            key={cell.id}
+                            style={{ width: `${cell.column.getSize()}px` }}
+                            className="last:py-0 py-1 text-xs"
+                          >
+                            {flexRender(
+                              cell.column.columnDef.cell,
+                              cell.getContext()
+                            )}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columns.length}
+                        className="h-16 text-center text-sm"
+                      >
+                        No results.
+                      </TableCell>
+                    </TableRow>
                   )}
-                </span>{" "}
-                of{" "}
-                <span className="text-foreground">
-                  {table.getRowCount().toString()}
-                </span>
-              </p>
-            </div>
-
-            {/* Pagination buttons */}
-            <div>
-              <div className="flex items-center gap-1">
-                {/* First page button */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="disabled:pointer-events-none disabled:opacity-50 h-8 w-8 p-0"
-                  onClick={() => table.firstPage()}
-                  disabled={!table.getCanPreviousPage()}
-                  aria-label="Go to first page"
-                >
-                  <ChevronFirstIcon size={14} aria-hidden="true" />
-                </Button>
-                {/* Previous page button */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="disabled:pointer-events-none disabled:opacity-50 h-8 w-8 p-0"
-                  onClick={() => table.previousPage()}
-                  disabled={!table.getCanPreviousPage()}
-                  aria-label="Go to previous page"
-                >
-                  <ChevronLeftIcon size={14} aria-hidden="true" />
-                </Button>
-                {/* Next page button */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="disabled:pointer-events-none disabled:opacity-50 h-8 w-8 p-0"
-                  onClick={() => table.nextPage()}
-                  disabled={!table.getCanNextPage()}
-                  aria-label="Go to next page"
-                >
-                  <ChevronRightIcon size={14} aria-hidden="true" />
-                </Button>
-                {/* Last page button */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="disabled:pointer-events-none disabled:opacity-50 h-8 w-8 p-0"
-                  onClick={() => table.lastPage()}
-                  disabled={!table.getCanNextPage()}
-                  aria-label="Go to last page"
-                >
-                  <ChevronLastIcon size={14} aria-hidden="true" />
-                </Button>
-              </div>
-            </div>
+                </TableBody>
+              </Table>
+            </ScrollArea>
           </div>
-        </CardContent>
-      </Card>
-                      </div>
+
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -702,115 +628,107 @@ function RowActions({ row }: { row: Row<Candidate> }) {
   const candidate = row.original
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <div className="flex justify-end">
+    <div className="flex justify-end gap-1">
+      <Dialog>
+        <DialogTrigger asChild>
           <Button
             size="sm"
-            variant="ghost"
-            className="shadow-none h-6 w-6 p-0"
-            aria-label="Edit item"
+            className="h-8 text-accent-foreground px-2 cursor-pointer !bg-transparent hover:text-accent-foreground hover:!bg-transparent active:!bg-transparent focus:!bg-transparent"
+            style={{
+              background: "transparent",
+            }}
           >
-            <EllipsisIcon size={12} aria-hidden="true" />
+            <EyeIcon size={14} aria-hidden="true" />
+            <span className="ml-1">View</span>
           </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="pb-3">
+            <DialogTitle className="text-lg">{candidate.name} - Interview Details</DialogTitle>
+            <DialogDescription className="text-sm">
+              Complete interview history and evaluation
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Candidate Info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <h4 className="font-medium mb-1 text-sm">Contact Information</h4>
+                <div className="space-y-1 text-xs">
+                  <p><strong>Name:</strong> {candidate.name}</p>
+                  <p><strong>Email:</strong> {candidate.email}</p>
+                  <p><strong>Phone:</strong> {candidate.phone}</p>
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium mb-1 text-sm">Interview Summary</h4>
+                <div className="space-y-1 text-xs">
+                  <p><strong>Status:</strong> {candidate.interviewStatus.replace('_', ' ')}</p>
+                  <p><strong>Score:</strong> {candidate.finalScore || 'Pending'}/100</p>
+                  <p><strong>Duration:</strong> {candidate.totalTime ? formatTime(candidate.totalTime) : 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Questions and Answers */}
+            <div>
+              <h4 className="font-medium mb-2 text-sm">Interview Questions & Answers</h4>
+              <div className="space-y-2">
+                {candidate.answers.map((answer, index) => (
+                  <div key={answer.questionId} className="border rounded p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center space-x-1">
+                        <Badge className={`text-xs px-1.5 py-0.5 ${getDifficultyColor(answer.difficulty)}`}>
+                          {answer.difficulty}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">Question {index + 1}</span>
                       </div>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuGroup>
-                        <Dialog>
-                          <DialogTrigger asChild>
-              <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                <EyeIcon size={14} aria-hidden="true" />
-                <span>View Details</span>
-              </DropdownMenuItem>
-                          </DialogTrigger>
-                        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
-                          <DialogHeader className="pb-3">
-                            <DialogTitle className="text-lg">{candidate.name} - Interview Details</DialogTitle>
-                            <DialogDescription className="text-sm">
-                              Complete interview history and evaluation
-                            </DialogDescription>
-                          </DialogHeader>
-                          
-                          <div className="space-y-4">
-                            {/* Candidate Info */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <div>
-                                <h4 className="font-medium mb-1 text-sm">Contact Information</h4>
-                                <div className="space-y-1 text-xs">
-                                  <p><strong>Name:</strong> {candidate.name}</p>
-                                  <p><strong>Email:</strong> {candidate.email}</p>
-                                  <p><strong>Phone:</strong> {candidate.phone}</p>
-                                </div>
-                              </div>
-                              <div>
-                                <h4 className="font-medium mb-1 text-sm">Interview Summary</h4>
-                                <div className="space-y-1 text-xs">
-                      <p><strong>Status:</strong> {candidate.interviewStatus.replace('_', ' ')}</p>
-                                  <p><strong>Score:</strong> {candidate.finalScore || 'Pending'}/100</p>
-                                  <p><strong>Duration:</strong> {candidate.totalTime ? formatTime(candidate.totalTime) : 'N/A'}</p>
-                                </div>
-                              </div>
-                            </div>
+                      <div className="text-xs text-muted-foreground">
+                        Time: {formatTime(answer.timeSpent * 1000)}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div>
+                        <strong className="text-xs">Question:</strong>
+                        <p className="text-xs mt-1">{answer.question}</p>
+                      </div>
+                      <div>
+                        <strong className="text-xs">Answer:</strong>
+                        <p className="text-xs mt-1 bg-muted p-2 rounded">
+                          {answer.answer}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-                            {/* Questions and Answers */}
-                            <div>
-                              <h4 className="font-medium mb-2 text-sm">Interview Questions & Answers</h4>
-                              <div className="space-y-2">
-                                {candidate.answers.map((answer, index) => (
-                                  <div key={answer.questionId} className="border rounded p-3">
-                                    <div className="flex items-center justify-between mb-1">
-                                      <div className="flex items-center space-x-1">
-                                        <Badge className={`text-xs px-1.5 py-0.5 ${getDifficultyColor(answer.difficulty)}`}>
-                                          {answer.difficulty}
-                                        </Badge>
-                                        <span className="text-xs text-muted-foreground">Question {index + 1}</span>
-                                      </div>
-                                      <div className="text-xs text-muted-foreground">
-                                        Time: {formatTime(answer.timeSpent * 1000)}
-                                      </div>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <div>
-                                        <strong className="text-xs">Question:</strong>
-                                        <p className="text-xs mt-1">{answer.question}</p>
-                                      </div>
-                                      <div>
-                                        <strong className="text-xs">Answer:</strong>
-                                        <p className="text-xs mt-1 bg-muted p-2 rounded">
-                                          {answer.answer}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* AI Summary */}
-                            {candidate.aiSummary && (
-                              <div>
-                                <h4 className="font-medium mb-1 text-sm">AI Summary</h4>
-                                <div className="bg-accent p-2 rounded">
-                                  <p className="text-xs">{candidate.aiSummary}</p>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-                          onClick={() => deleteCandidate(candidate.id)}
-          >
-            <TrashIcon size={14} aria-hidden="true" />
-            <span>Delete</span>
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+            {/* AI Summary */}
+            {candidate.aiSummary && (
+              <div>
+                <h4 className="font-medium mb-1 text-sm">AI Summary</h4>
+                <div className="bg-accent p-2 rounded">
+                  <p className="text-xs">{candidate.aiSummary}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-8 px-2 text-destructive hover:text-destructive cursor-pointer !bg-transparent hover:!bg-transparent active:!bg-transparent focus:!bg-transparent"
+        onClick={() => deleteCandidate(candidate.id)}
+        style={{
+          background: "transparent",
+        }}
+      >
+        <TrashIcon size={14} aria-hidden="true" />
+        <span className="ml-1">Delete</span>
+      </Button>
+    </div>
   )
 }
