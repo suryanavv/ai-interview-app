@@ -51,6 +51,7 @@ export interface InterviewState {
   unfinishedSession: Candidate | null
   interviewStartTime: number | null
   questionStartTime: number | null
+  showFeedbackCompletion: boolean
 }
 
 export interface InterviewActions {
@@ -67,6 +68,10 @@ export interface InterviewActions {
   deleteCandidate: (id: string) => void
   tickTimer: () => boolean
   submitPendingInterviewWithEmptyAnswers: (candidate: Candidate) => void
+  setShowFeedbackCompletion: (show: boolean) => void
+  returnToHome: () => void
+  handleResumeInterview: () => void
+  handleStartNew: () => void
 }
 
 const generateQuestions = (): Question[] => [
@@ -184,6 +189,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
       unfinishedSession: null,
       interviewStartTime: null,
       questionStartTime: null,
+      showFeedbackCompletion: false,
 
       // Actions
       addCandidate: (candidateData) => {
@@ -315,7 +321,8 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
           currentQuestion: null,
           timeRemaining: 0,
           interviewStartTime: null,
-          questionStartTime: null
+          questionStartTime: null,
+          showFeedbackCompletion: true
         })
       },
 
@@ -329,7 +336,8 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
           currentQuestion: null,
           timeRemaining: 0,
           interviewStartTime: null,
-          questionStartTime: null
+          questionStartTime: null,
+          showFeedbackCompletion: false
         })
       },
 
@@ -410,7 +418,54 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
             new Date().getTime() - (candidate.startTime instanceof Date ? 
               candidate.startTime.getTime() : new Date(candidate.startTime).getTime()) : 0
         })
-      }
+      },
+
+      setShowFeedbackCompletion: (show) => {
+        set({ showFeedbackCompletion: show })
+      },
+
+      returnToHome: () => {
+        // Reset all interview state
+        set({
+          isInterviewActive: false,
+          currentCandidateId: null,
+          currentQuestion: null,
+          timeRemaining: 0,
+          interviewStartTime: null,
+          questionStartTime: null,
+          showFeedbackCompletion: false
+        })
+        
+        // Clear session flag
+        sessionStorage.removeItem('interview-session-active')
+        
+        // Dispatch event to reset resume upload
+        window.dispatchEvent(new CustomEvent('resetResumeUpload'))
+      },
+
+      handleResumeInterview: () => {
+        const state = get()
+        if (state.unfinishedSession) {
+          state.startInterview(state.unfinishedSession.id)
+          state.setShowWelcomeBackModal(false)
+          state.setUnfinishedSession(null)
+        }
+      },
+
+      handleStartNew: () => {
+        const state = get()
+        if (state.unfinishedSession) {
+          // Submit the existing pending interview with empty answers first
+          state.submitPendingInterviewWithEmptyAnswers(state.unfinishedSession)
+        }
+        
+        state.resetInterview()
+        state.setShowWelcomeBackModal(false)
+        state.setUnfinishedSession(null)
+        // Clear any existing resume data to show fresh upload
+        window.dispatchEvent(new CustomEvent('resetResumeUpload'))
+      },
+
     }),
     {
       name: 'interview-storage',
@@ -421,7 +476,8 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         currentQuestion: state.currentQuestion,
         timeRemaining: state.timeRemaining,
         interviewStartTime: state.interviewStartTime,
-        questionStartTime: state.questionStartTime
+        questionStartTime: state.questionStartTime,
+        showFeedbackCompletion: state.showFeedbackCompletion
       })
     }
   )
