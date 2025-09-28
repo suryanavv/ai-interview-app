@@ -16,16 +16,16 @@ import {
   type VisibilityState,
 } from "@tanstack/react-table"
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CircleAlertIcon,
-  CircleXIcon,
-  EyeIcon,
-  FilterIcon,
-  SearchIcon,
-  StarIcon,
-  TrashIcon,
-} from "lucide-react"
+  IconArrowDown,
+  IconArrowUp,
+  IconAlertCircle,
+  IconCircleX,
+  IconEye,
+  IconFilter,
+  IconSearch,
+  IconStar,
+  IconTrash,
+} from "@tabler/icons-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -177,7 +177,7 @@ const columns: ColumnDef<Candidate>[] = [
       const score = row.getValue("finalScore") as number | undefined
       return score !== undefined ? (
         <div className="flex items-center space-x-1">
-          <StarIcon className="h-4 w-4 text-primary" />
+          <IconStar className="h-4 w-4 text-primary" />
           <span className="font-medium text-foreground">{score}/100</span>
         </div>
       ) : (
@@ -434,9 +434,13 @@ export function InterviewerTab() {
                 id={`${id}-input`}
                 ref={inputRef}
                 className={cn(
-                  "peer ps-9",
+                  "peer ps-9 border border-border/50 focus:border-border/70", // Make border thinner and less prominent
                   Boolean(table.getColumn("name")?.getFilterValue()) && "pe-9"
                 )}
+                style={{
+                  boxShadow: "none", // Remove any box shadow
+                  borderWidth: "1px", // Thinner border
+                }}
                 value={
                   (table.getColumn("name")?.getFilterValue() ?? "") as string
                 }
@@ -448,7 +452,7 @@ export function InterviewerTab() {
                 aria-label="Filter by name or email"
               />
               <div className="text-muted-foreground/80 pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
-                <SearchIcon size={16} aria-hidden="true" />
+                <IconSearch size={16} aria-hidden="true" />
               </div>
               {Boolean(table.getColumn("name")?.getFilterValue()) && (
                 <button
@@ -461,7 +465,7 @@ export function InterviewerTab() {
                     }
                   }}
                 >
-                  <CircleXIcon size={16} aria-hidden="true" />
+                  <IconCircleX size={16} aria-hidden="true" />
                 </button>
               )}
             </div>
@@ -472,7 +476,7 @@ export function InterviewerTab() {
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm">
-                    <FilterIcon
+                    <IconFilter
                       className="-ms-1 opacity-60"
                       size={14}
                       aria-hidden="true"
@@ -577,9 +581,9 @@ export function InterviewerTab() {
                 className="px-2 cursor-pointer"
               >
                 {sortDirection === "asc" ? (
-                  <ArrowUpIcon size={14} />
+                  <IconArrowUp size={14} />
                 ) : (
-                  <ArrowDownIcon size={14} />
+                  <IconArrowDown size={14} />
                 )}
               </Button>
               {/* Delete button */}
@@ -587,7 +591,7 @@ export function InterviewerTab() {
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button className="text-destructive hover:text-destructive border-destructive/20 hover:bg-destructive/20 cursor-pointer ml-auto" variant="outline" size="sm">
-                      <TrashIcon
+                      <IconTrash
                         className="-ms-1"
                         size={14}
                         aria-hidden="true"
@@ -603,7 +607,7 @@ export function InterviewerTab() {
                         className="flex size-9 shrink-0 items-center justify-center rounded-full border border-destructive/40 bg-destructive/10 text-destructive"
                         aria-hidden="true"
                       >
-                        <CircleAlertIcon className="opacity-80 text-destructive" size={16} />
+                        <IconAlertCircle className="opacity-80 text-destructive" size={16} />
                       </div>
                       <AlertDialogHeader>
                         <AlertDialogTitle className="text-destructive">
@@ -723,7 +727,7 @@ function RowActions({ row }: { row: Row<Candidate> }) {
               background: "transparent",
             }}
           >
-            <EyeIcon size={14} aria-hidden="true" />
+            <IconEye size={14} aria-hidden="true" />
             <span className="ml-1 hidden sm:inline">View</span>
           </Button>
         </DialogTrigger>
@@ -811,7 +815,7 @@ function RowActions({ row }: { row: Row<Candidate> }) {
           background: "transparent",
         }}
       >
-        <TrashIcon size={14} aria-hidden="true" />
+        <IconTrash size={14} aria-hidden="true" />
         <span className="ml-1 hidden sm:inline">Delete</span>
       </Button>
     </div>

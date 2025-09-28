@@ -26,7 +26,7 @@ function App() {
         <div
           className="flex items-center justify-center py-3 w-full bg-secondary rounded-md sm:rounded-lg"
         >
-          <h1 className="text-xs sm:text-sm font-semibold text-center px-1">AI-Powered Interview Assistant (Crisp)</h1>
+          <h1 className="text-sm sm:text-lg font-semibold text-center px-1">Crisp - An AI Powered Interview Assistant</h1>
         </div>
       </header>
 

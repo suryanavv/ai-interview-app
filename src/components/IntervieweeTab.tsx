@@ -3,8 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Upload, FileText, CheckCircle, Clock, Send, User, Mail, Phone, AlertCircleIcon, XIcon, Play } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { IconUpload, IconFileText, IconCircleCheck, IconClock, IconSend, IconUser, IconMail, IconPhone, IconAlertCircle, IconX, IconPlayerPlay } from "@tabler/icons-react"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { useInterviewStore } from "@/store/interviewStore"
@@ -61,7 +60,6 @@ export function IntervieweeTab() {
   const [canStartInterview, setCanStartInterview] = useState(false)
   const [currentAnswer, setCurrentAnswer] = useState("")
   const [timeElapsed, setTimeElapsed] = useState(0)
-  const [showResetMessage, setShowResetMessage] = useState(false)
 
   const {
     currentCandidateId,
@@ -340,10 +338,6 @@ export function IntervieweeTab() {
       setCollectedData({})
       setCurrentAnswer("")
       setTimeElapsed(0)
-
-      // Show reset message briefly
-      setShowResetMessage(true)
-      setTimeout(() => setShowResetMessage(false), 3000)
     }
 
     window.addEventListener('resetResumeUpload', handleResetResumeUpload)
@@ -441,7 +435,7 @@ export function IntervieweeTab() {
         <div className="flex flex-col items-center justify-center space-y-3 sm:space-y-4">
           <div className="text-center space-y-2 sm:space-y-3">
             <div className="mx-auto w-10 sm:w-12 h-10 sm:h-12 bg-green-100 rounded-full flex items-center justify-center">
-              <CheckCircle className="h-5 sm:h-6 w-5 sm:w-6 text-green-600" />
+              <IconCircleCheck className="h-5 sm:h-6 w-5 sm:w-6 text-green-600" />
             </div>
             <h2 className="text-lg sm:text-xl font-bold text-foreground">Thank You!</h2>
             <p className="text-xs sm:text-sm text-muted-foreground max-w-sm px-2">
@@ -483,7 +477,7 @@ export function IntervieweeTab() {
         <div className="flex flex-col items-center justify-center space-y-3 sm:space-y-4">
           <div className="text-center space-y-2 sm:space-y-3">
             <div className="mx-auto w-10 sm:w-12 h-10 sm:h-12 bg-chart-3/10 rounded-full flex items-center justify-center">
-              <Clock className="h-5 w-5 sm:h-6 sm:w-6 text-chart-3" />
+              <IconClock className="h-5 w-5 sm:h-6 sm:w-6 text-chart-3" />
             </div>
             <h2 className="text-lg sm:text-xl font-bold text-foreground">Welcome Back!</h2>
             <p className="text-xs sm:text-sm text-muted-foreground max-w-sm px-2">
@@ -519,7 +513,7 @@ export function IntervieweeTab() {
               size="sm"
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium cursor-pointer"
             >
-              <Play className="h-4 w-4" />
+              <IconPlayerPlay className="h-4 w-4" />
               Resume Interview
             </Button>
             <Button
@@ -550,14 +544,14 @@ export function IntervieweeTab() {
             <div>
               <h2 className="text-sm sm:text-base font-semibold">AI Interview Assessment</h2>
             </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+            <div className="flex flex-row sm:flex-row items-start sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm">
               <span className="truncate">
                 {displayCandidate?.name
                   ?.split(' ')
                   .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                   .join(' ')}
               </span>
-              <span className="hidden sm:block">•</span>
+              <span>•</span>
               <span className="truncate">{displayCandidate?.email}</span>
             </div>
           </div>
@@ -569,7 +563,7 @@ export function IntervieweeTab() {
 
             {/* Question Section */}
             <div className="space-y-2 sm:space-y-3">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex flex-row sm:items-center justify-between gap-2">
                 <h3 className="text-sm sm:text-base font-semibold flex flex-wrap items-center gap-1 sm:gap-2">
                   Question {(displayCandidate?.currentQuestionIndex || 0) + 1} of 6
                   <div className="flex items-center gap-1">
@@ -581,7 +575,7 @@ export function IntervieweeTab() {
                 </h3>
                 {/* Timer Section */}
                 <div className="flex items-center gap-1 sm:gap-2">
-                  <Clock className="h-3 sm:h-4 w-3 sm:w-4 text-muted-foreground" />
+                  <IconClock className="h-3 sm:h-4 w-3 sm:w-4 text-muted-foreground" />
                   <span className="text-base sm:text-lg font-mono font-semibold">
                     {formatTime(timeRemaining)}
                   </span>
@@ -597,8 +591,8 @@ export function IntervieweeTab() {
                   onChange={(e) => setCurrentAnswer(e.target.value)}
                   placeholder="Type your answer here..."
                   rows={18}
-                  className="min-h-[400px] sm:min-h-[800px] resize-y text-xs sm:text-sm"
-                  style={{ minHeight: 300, maxHeight: 800 }}
+                  className="min-h-[400px] sm:min-h-[800px] resize-y text-xs sm:text-sm border border-border/50 focus:border-border/70"
+                  style={{ minHeight: 300, maxHeight: 800, boxShadow: "none", borderWidth: "1px" }}
                 />
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1">
                   <span className="text-xs text-muted-foreground">
@@ -610,7 +604,7 @@ export function IntervieweeTab() {
                     size="sm"
                     className="w-full sm:w-auto cursor-pointer"
                   >
-                    <Send className="h-3 w-3 mr-1" />
+                    <IconSend className="h-3 w-3 mr-1" />
                     Submit Answer
                   </Button>
                 </div>
@@ -636,22 +630,13 @@ export function IntervieweeTab() {
       {/* Content - Scrollable */}
       <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
         <div className="space-y-3 sm:space-y-4">
-          {/* Reset Message */}
-          {showResetMessage && (
-            <Alert className="py-2">
-              <CheckCircle className="h-3 w-3" />
-              <AlertDescription className="text-xs sm:text-sm">
-                Resume upload has been reset. Please upload a new resume.
-              </AlertDescription>
-            </Alert>
-          )}
 
           {/* Resume Upload Section */}
           <div className="space-y-2 sm:space-y-3">
             <div className="space-y-1">
               <Label className="text-base sm:text-lg font-semibold">Smart Resume Analysis</Label>
               <p className="text-xs text-muted-foreground">
-                Upload your resume for AI-powered information extraction and personalized interview preparation
+                Upload your resume for AI-powered personalized interview
               </p>
             </div>
 
@@ -677,7 +662,7 @@ export function IntervieweeTab() {
                         className="bg-background mb-2 flex size-8 sm:size-9 shrink-0 items-center justify-center rounded-full border"
                         aria-hidden="true"
                       >
-                        <FileText className="size-3 sm:size-4 opacity-60" />
+                        <IconFileText className="size-3 sm:size-4 opacity-60" />
                       </div>
                       <p className="mb-1 text-xs font-medium truncate max-w-full">
                         {resumeFile.name}
@@ -692,7 +677,7 @@ export function IntervieweeTab() {
                         className="bg-background mb-1 flex size-7 sm:size-8 shrink-0 items-center justify-center rounded-full border"
                         aria-hidden="true"
                       >
-                        <Upload className="size-3 opacity-60" />
+                        <IconUpload className="size-3 opacity-60" />
                       </div>
                       <p className="mb-1 text-xs font-medium">
                         Drop your resume here
@@ -718,7 +703,7 @@ export function IntervieweeTab() {
                       onClick={handleRemoveFile}
                       aria-label="Remove resume"
                     >
-                      <XIcon className="size-4" aria-hidden="true" />
+                      <IconX className="size-4" aria-hidden="true" />
                     </button>
                   </div>
                 )}
@@ -729,7 +714,7 @@ export function IntervieweeTab() {
                   className="text-destructive flex items-center gap-1 text-xs"
                   role="alert"
                 >
-                  <AlertCircleIcon className="size-3 shrink-0" />
+                  <IconAlertCircle className="size-3 shrink-0" />
                   <span>{errors[0]}</span>
                 </div>
               )}
@@ -755,7 +740,7 @@ export function IntervieweeTab() {
                 {(['name', 'email', 'phone'] as const).map((field) => {
                   const fieldStatus = getFieldStatus(field)
                   const fieldLabels = { name: 'Full Name', email: 'Email Address', phone: 'Phone Number' }
-                  const fieldIcons = { name: User, email: Mail, phone: Phone }
+                  const fieldIcons = { name: IconUser, email: IconMail, phone: IconPhone }
                   const Icon = fieldIcons[field]
                   const currentValue = fieldStatus.value || ''
 
@@ -777,7 +762,8 @@ export function IntervieweeTab() {
                           setMissingFields(newMissing)
                         }}
                         placeholder={`Enter your ${fieldLabels[field].toLowerCase()}`}
-                        className={`text-xs sm:text-sm h-7 sm:h-8 ${fieldStatus.status === 'extracted' ? 'border-green-200 bg-green-50' : fieldStatus.status === 'collected' ? 'border-blue-200 bg-blue-50' : 'border-red-200 bg-red-50'}`}
+                        className={`text-xs sm:text-sm h-7 sm:h-8 border border-[1px] ${fieldStatus.status === 'extracted' ? 'border-green-200 bg-green-50' : fieldStatus.status === 'collected' ? 'border-blue-200 bg-blue-50' : 'border-red-200 bg-red-50'}`}
+                        style={{ boxShadow: "none", borderWidth: "1px" }}
                       />
                       <div className="flex items-center gap-1">
                         {fieldStatus.status === 'extracted' && (
@@ -797,18 +783,7 @@ export function IntervieweeTab() {
             </div>
           )}
 
-
-          {/* Ready to Start Interview */}
-          {canStartInterview && (
-            <div className="text-center">
-              <span className="text-xs sm:text-sm flex items-center justify-center gap-2">
-                <CheckCircle className="h-3 w-3 text-green-600" />
-                All information collected. Ready to begin the interview.
-              </span>
-            </div>
-          )}
-
-          <div className="space-y-2 flex justify-center mt-auto pt-4">
+          <div className="flex justify-center mt-auto pt-3">
             <Button
               disabled={!canStartInterview || isInterviewActive}
               onClick={handleStartInterview}
@@ -819,6 +794,16 @@ export function IntervieweeTab() {
             </Button>
 
           </div>
+          
+          {/* Ready to Start Interview */}
+          {canStartInterview && (
+            <div className="text-center">
+              <span className="text-xs sm:text-sm flex items-center justify-center gap-2">
+                <IconCircleCheck className="h-3 w-3 text-green-600" />
+                All information collected. Ready to begin the interview.
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>
