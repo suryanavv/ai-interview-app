@@ -9,24 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { useInterviewStore } from "@/store/interviewStore"
 import { toast } from "sonner"
 import { useFileUpload } from "@/hooks/use-file-upload"
-import * as pdfjsLib from 'pdfjs-dist'
-import mammoth from 'mammoth'
-
-// Configure PDF.js worker - use local worker file
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
-
-interface ExtractedData {
-  name?: string
-  email?: string
-  phone?: string
-  rawText: string
-}
-
-interface MissingFields {
-  name: boolean
-  email: boolean
-  phone: boolean
-}
+import { FileProcessingService, DataProcessingService, type ExtractedData, type MissingFields } from "@/services"
 
 export function IntervieweeTab() {
   const maxSizeMB = 5
@@ -86,113 +69,13 @@ export function IntervieweeTab() {
 
   const currentCandidate = candidates.find(c => c.id === currentCandidateId)
 
-  const extractTextFromPDF = async (file: File): Promise<string> => {
-    const arrayBuffer = await file.arrayBuffer()
-    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise
-    let fullText = ""
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i)
-      const textContent = await page.getTextContent()
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ')
-      fullText += pageText + '\n'
-    }
-
-    // Console log for testing
-    console.log('=== PDF PARSED TEXT ===')
-    console.log('File:', file.name)
-    console.log('Pages:', pdf.numPages)
-    console.log('Text:', fullText)
-    console.log('=== END PDF TEXT ===')
-
-    return fullText
-  }
-
-  const extractTextFromDOCX = async (file: File): Promise<string> => {
-    const arrayBuffer = await file.arrayBuffer()
-    const result = await mammoth.extractRawText({ arrayBuffer })
-
-    // Console log for testing
-    console.log('=== DOCX PARSED TEXT ===')
-    console.log('File:', file.name)
-    console.log('Text:', result.value)
-    console.log('=== END DOCX TEXT ===')
-
-    return result.value
-  }
-
-  const extractFields = (text: string): ExtractedData => {
-    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g
-    const phoneRegex = /(\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})/g
-
-    const emails = text.match(emailRegex) || []
-    const phones = text.match(phoneRegex) || []
-
-    // Simple name extraction - look for common patterns
-    const lines = text.split('\n').filter(line => line.trim().length > 0)
-    let name = ""
-
-    // Look for name in first few lines (common resume format)
-    for (let i = 0; i < Math.min(3, lines.length); i++) {
-      const line = lines[i].trim()
-      if (line.length > 2 && line.length < 50 && !line.includes('@') && !line.match(phoneRegex)) {
-        // Check if it looks like a name (contains letters and possibly spaces)
-        if (/^[A-Za-z\s\.]+$/.test(line)) {
-          name = line
-          break
-        }
-      }
-    }
-
-    const extractedData = {
-      name: name || undefined,
-      email: emails[0] || undefined,
-      phone: phones[0] || undefined,
-      rawText: text
-    }
-
-    // Console log for testing
-    console.log('=== EXTRACTED FIELDS ===')
-    console.log('Name:', extractedData.name)
-    console.log('Email:', extractedData.email)
-    console.log('Phone:', extractedData.phone)
-    console.log('All emails found:', emails)
-    console.log('All phones found:', phones)
-    console.log('=== END EXTRACTED FIELDS ===')
-
-    return extractedData
-  }
 
   const handleFileUpload = async (file: File) => {
-    // Validate file size (5MB limit)
-    const maxSize = 5 * 1024 * 1024 // 5MB
-    if (file.size > maxSize) {
-      toast.error("File too large", {
-        description: "Please upload a file smaller than 5MB."
-      })
-      return
-    }
-
-    // Validate file type
-    const allowedTypes = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ]
-
-    if (!allowedTypes.includes(file.type)) {
-      toast.error("Invalid file type", {
-        description: "Please upload only PDF or DOCX files."
-      })
-      return
-    }
-
-    // Validate file extension
-    const fileExtension = file.name.split('.').pop()?.toLowerCase()
-    if (!fileExtension || !['pdf', 'docx'].includes(fileExtension)) {
-      toast.error("Invalid file extension", {
-        description: "Please upload only PDF or DOCX files."
+    // Validate file using the service
+    const validation = FileProcessingService.validateFile(file, maxSizeMB)
+    if (!validation.isValid) {
+      toast.error("File validation failed", {
+        description: validation.error
       })
       return
     }
@@ -200,25 +83,15 @@ export function IntervieweeTab() {
     setIsProcessing(true)
 
     try {
-      let text = ""
+      // Extract text from file using the service
+      const text = await FileProcessingService.extractTextFromFile(file)
 
-      if (file.type === "application/pdf") {
-        text = await extractTextFromPDF(file)
-      } else if (file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-        text = await extractTextFromDOCX(file)
-      } else {
-        throw new Error("Unsupported file type")
-      }
-
-      const extracted = extractFields(text)
+      // Extract fields from text using the service
+      const extracted = DataProcessingService.extractFields(text)
       setExtractedData(extracted)
 
-      // Check which fields are missing
-      const missing = {
-        name: !extracted.name,
-        email: !extracted.email,
-        phone: !extracted.phone
-      }
+      // Check which fields are missing using the service
+      const missing = DataProcessingService.getMissingFields(extracted)
       setMissingFields(missing)
 
       // Show success message
@@ -254,13 +127,7 @@ export function IntervieweeTab() {
 
 
   const getFieldStatus = (field: keyof MissingFields) => {
-    if (extractedData?.[field]) {
-      return { status: 'extracted', value: extractedData[field] }
-    } else if (collectedData[field]) {
-      return { status: 'collected', value: collectedData[field] }
-    } else {
-      return { status: 'missing', value: null }
-    }
+    return DataProcessingService.getFieldStatus(field, extractedData, collectedData)
   }
 
   // Timer effect - handles countdown and auto-submission
@@ -314,15 +181,8 @@ export function IntervieweeTab() {
   // Check if all required fields are filled
   useEffect(() => {
     if (extractedData || Object.keys(collectedData).length > 0) {
-      const hasName = extractedData?.name || collectedData.name
-      const hasEmail = extractedData?.email || collectedData.email
-      const hasPhone = extractedData?.phone || collectedData.phone
-
-      if (hasName && hasEmail && hasPhone) {
-        setCanStartInterview(true)
-      } else {
-        setCanStartInterview(false)
-      }
+      const hasAllFields = DataProcessingService.hasAllRequiredFields(extractedData, collectedData)
+      setCanStartInterview(hasAllFields)
     }
   }, [extractedData, collectedData])
 
@@ -373,11 +233,6 @@ export function IntervieweeTab() {
       extractedData: extractedData || undefined
     }
 
-    // Debug logging
-    console.log('=== STARTING INTERVIEW ===')
-    console.log('Extracted Data:', extractedData)
-    console.log('Collected Data:', collectedData)
-    console.log('Final Candidate Data:', candidateData)
 
     // Reset any existing interview state first
     resetInterview()
@@ -792,18 +647,7 @@ export function IntervieweeTab() {
             >
               {isInterviewActive ? "Assessment in Progress" : "Begin Assessment"}
             </Button>
-
           </div>
-          
-          {/* Ready to Start Interview */}
-          {canStartInterview && (
-            <div className="text-center">
-              <span className="text-xs sm:text-sm flex items-center justify-center gap-2">
-                <IconCircleCheck className="h-3 w-3 text-green-600" />
-                All information collected. Ready to begin the interview.
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>
