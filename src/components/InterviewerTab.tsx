@@ -10,7 +10,6 @@ import {
   getFacetedUniqueValues,
   getFilteredRowModel,
   getSortedRowModel,
-  type Row,
   type SortingState,
   useReactTable,
   type VisibilityState,
@@ -20,7 +19,7 @@ import {
   IconArrowUp,
   IconAlertCircle,
   IconCircleX,
-  IconEye,
+  IconX,
   IconFilter,
   IconSearch,
   IconStar,
@@ -42,14 +41,6 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -94,10 +85,18 @@ const statusFilterFn: FilterFn<Candidate> = (
 
 const getDifficultyColor = (difficulty: string) => {
   switch (difficulty) {
-    case "Easy": return "bg-primary/10 text-primary"
-    case "Medium": return "bg-secondary/10 text-secondary-foreground"
-    case "Hard": return "bg-destructive/10 text-destructive"
-    default: return "bg-muted text-muted-foreground"
+    case "Easy":
+      // Green = Success = Easy
+      return "bg-green-100 text-green-800 border-green-200"
+    case "Medium":
+      // Yellow = Warning = Medium
+      return "bg-yellow-100 text-yellow-800 border-yellow-200"
+    case "Hard":
+      // Red = Danger = Hard
+      return "bg-red-100 text-red-800 border-red-200"
+    default:
+      // Uses muted for unknown
+      return "bg-muted text-muted-foreground"
   }
 }
 
@@ -116,112 +115,6 @@ const formatTime = (milliseconds: number) => {
   const secs = seconds % 60
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
-
-const columns: ColumnDef<Candidate>[] = [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <Checkbox
-        checked={
-          table.getIsAllPageRowsSelected() ||
-          (table.getIsSomePageRowsSelected() && "indeterminate")
-        }
-        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-        aria-label="Select all"
-      />
-    ),
-    cell: ({ row }) => (
-      <Checkbox
-        checked={row.getIsSelected()}
-        onCheckedChange={(value) => row.toggleSelected(!!value)}
-        aria-label="Select row"
-      />
-    ),
-    size: 28,
-    enableSorting: false,
-    enableHiding: false,
-  },
-  {
-    header: "Name",
-    accessorKey: "name",
-    cell: ({ row }) => (
-      <div className="font-medium">{row.getValue("name")}</div>
-    ),
-    size: 180,
-    filterFn: multiColumnFilterFn,
-    enableHiding: false,
-  },
-  {
-    header: "Email",
-    accessorKey: "email",
-    size: 220,
-  },
-  {
-    header: "Status",
-    accessorKey: "interviewStatus",
-    cell: ({ row }) => {
-      const status = row.getValue("interviewStatus") as string
-      return (
-        <Badge className={getStatusColor(status)}>
-          {status.replace('_', ' ')}
-        </Badge>
-      )
-    },
-    size: 120,
-    filterFn: statusFilterFn,
-  },
-  {
-    header: "Score",
-    accessorKey: "finalScore",
-    cell: ({ row }) => {
-      const score = row.getValue("finalScore") as number | undefined
-      return score !== undefined ? (
-        <div className="flex items-center space-x-1">
-          <IconStar className="h-4 w-4 text-primary" />
-          <span className="font-medium text-foreground">{score}/100</span>
-        </div>
-      ) : (
-        <span className="text-muted-foreground">-</span>
-      )
-    },
-    size: 100,
-  },
-  {
-    header: "Duration",
-    accessorKey: "totalTime",
-    cell: ({ row }) => {
-      const totalTime = row.getValue("totalTime") as number | undefined
-      return (
-        <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-          <span>{totalTime ? formatTime(totalTime) : '-'}</span>
-        </div>
-      )
-    },
-    size: 100,
-    enableHiding: true,
-  },
-  {
-    header: "Date",
-    accessorKey: "startTime",
-    cell: ({ row }) => {
-      const startTime = row.getValue("startTime") as Date | undefined
-      return (
-        <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-          <span>{startTime ? new Date(startTime).toLocaleDateString() : '-'}</span>
-        </div>
-      )
-    },
-    size: 120,
-    enableHiding: true,
-  },
-  {
-    id: "actions",
-    header: () => <span className="sr-only">Actions</span>,
-    cell: ({ row }) => <RowActions row={row} />,
-    size: 60,
-    enableHiding: false,
-  },
-]
 
 
 export function InterviewerTab() {
@@ -247,6 +140,109 @@ export function InterviewerTab() {
   const [sortingEnabled, setSortingEnabled] = useState<boolean>(true)
 
   const { candidates, deleteCandidate, addCandidate, updateCandidate } = useInterviewStore()
+
+  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
+
+  const columns: ColumnDef<Candidate>[] = [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Select all"
+        />
+      ),
+      cell: ({ row }) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Select row"
+          />
+        </div>
+      ),
+      size: 28,
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
+      header: "Name",
+      accessorKey: "name",
+      cell: ({ row }) => (
+        <div className="font-medium">{row.getValue("name")}</div>
+      ),
+      size: 180,
+      filterFn: multiColumnFilterFn,
+      enableHiding: false,
+    },
+    {
+      header: "Email",
+      accessorKey: "email",
+      size: 220,
+    },
+    {
+      header: "Status",
+      accessorKey: "interviewStatus",
+      cell: ({ row }) => {
+        const status = row.getValue("interviewStatus") as string
+        return (
+          <Badge className={getStatusColor(status)}>
+            {status.replace('_', ' ')}
+          </Badge>
+        )
+      },
+      size: 120,
+      filterFn: statusFilterFn,
+    },
+    {
+      header: "Score",
+      accessorKey: "finalScore",
+      cell: ({ row }) => {
+        const score = row.getValue("finalScore") as number | undefined
+        return score !== undefined ? (
+          <div className="flex items-center space-x-1">
+            <IconStar className="h-4 w-4 text-primary" />
+            <span className="font-medium text-foreground">{score}/100</span>
+          </div>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        )
+      },
+      size: 100,
+    },
+    {
+      header: "Duration",
+      accessorKey: "totalTime",
+      cell: ({ row }) => {
+        const totalTime = row.getValue("totalTime") as number | undefined
+        return (
+          <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+            <span>{totalTime ? formatTime(totalTime) : '-'}</span>
+          </div>
+        )
+      },
+      size: 100,
+      enableHiding: true,
+    },
+    {
+      header: "Date",
+      accessorKey: "startTime",
+      cell: ({ row }) => {
+        const startTime = row.getValue("startTime") as Date | undefined
+        return (
+          <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+            <span>{startTime ? new Date(startTime).toLocaleDateString() : '-'}</span>
+          </div>
+        )
+      },
+      size: 120,
+      enableHiding: true,
+    },
+  ]
 
   // Add dummy candidates if none exist
   useEffect(() => {
@@ -351,7 +347,7 @@ export function InterviewerTab() {
 
   const table = useReactTable({
     data: candidates,
-    columns,
+    columns: columns,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     onSortingChange: setSorting,
@@ -406,6 +402,10 @@ export function InterviewerTab() {
     table
       .getColumn("interviewStatus")
       ?.setFilterValue(newFilterValue.length ? newFilterValue : undefined)
+  }
+
+  const closeDetails = () => {
+    setSelectedCandidate(null)
   }
 
   return (
@@ -596,6 +596,7 @@ export function InterviewerTab() {
                         size={14}
                         aria-hidden="true"
                       />
+                      <span className="-ml-0.5 hidden lg:inline">Delete</span>
                       <span className="bg-background text-muted-foreground/70 -me-1 inline-flex h-4 max-h-full items-center rounded border px-1 font-[inherit] text-[0.625rem] font-medium">
                         {table.getSelectedRowModel().rows.length}
                       </span>
@@ -677,7 +678,8 @@ export function InterviewerTab() {
                       <TableRow
                         key={row.id}
                         data-state={row.getIsSelected() && "selected"}
-                        className="h-8"
+                        className="h-8 cursor-pointer hover:bg-muted/50"
+                        onClick={() => setSelectedCandidate(row.original)}
                       >
                         {row.getVisibleCells().map((cell) => (
                           <TableCell
@@ -708,116 +710,109 @@ export function InterviewerTab() {
             </div>
           </div>
       </div>
-    </div>
-  )
-}
 
-function RowActions({ row }: { row: Row<Candidate> }) {
-  const { deleteCandidate } = useInterviewStore()
-  const candidate = row.original
-
-  return (
-    <div className="flex justify-end gap-1">
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button
-            size="sm"
-            className="h-8 text-accent-foreground px-2 cursor-pointer !bg-transparent hover:text-accent-foreground hover:!bg-transparent active:!bg-transparent focus:!bg-transparent"
-            style={{
-              background: "transparent",
-            }}
+      {/* Details Overlay */}
+      {selectedCandidate && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 pb-8"
+          onClick={closeDetails}
+        >
+          <div 
+            className="bg-background rounded-lg shadow-lg max-w-4xl w-full max-h-full overflow-hidden flex flex-col border-2"
+            onClick={(e) => e.stopPropagation()}
           >
-            <IconEye size={14} aria-hidden="true" />
-            <span className="ml-1 hidden sm:inline">View</span>
-          </Button>
-        </DialogTrigger>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto mx-2 sm:mx-4">
-          <DialogHeader className="pb-3">
-            <DialogTitle className="text-base sm:text-lg">{candidate.name} - Interview Details</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              Complete interview history and evaluation
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Candidate Info */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="flex-shrink-0 p-3 border-b flex justify-between items-center">
               <div>
-                <h4 className="font-medium mb-1 text-sm">Contact Information</h4>
-                <div className="space-y-1 text-xs">
-                  <p><strong>Name:</strong> {candidate.name}</p>
-                  <p><strong>Email:</strong> {candidate.email}</p>
-                  <p><strong>Phone:</strong> {candidate.phone}</p>
-                </div>
+                <h3 className="text-base sm:text-lg font-semibold">{selectedCandidate.name} - Interview Details</h3>
+                <p className="text-xs sm:text-sm text-muted-foreground">
+                {selectedCandidate.email}
+                </p>
               </div>
-              <div>
-                <h4 className="font-medium mb-1 text-sm">Interview Summary</h4>
-                <div className="space-y-1 text-xs">
-                  <p><strong>Status:</strong> {candidate.interviewStatus.replace('_', ' ')}</p>
-                  <p><strong>Score:</strong> {candidate.finalScore || 'Pending'}/100</p>
-                  <p><strong>Duration:</strong> {candidate.totalTime ? formatTime(candidate.totalTime) : 'N/A'}</p>
-                </div>
-              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={closeDetails}
+                className="p-0"
+              >
+                <IconX size={16} />
+              </Button>
             </div>
-
-            {/* Questions and Answers */}
-            <div>
-              <h4 className="font-medium mb-2 text-sm">Interview Questions & Answers</h4>
-              <div className="space-y-2">
-                {candidate.answers.map((answer, index) => (
-                  <div key={answer.questionId} className="border rounded p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center space-x-1">
-                        <Badge className={`text-xs px-1.5 py-0.5 ${getDifficultyColor(answer.difficulty)}`}>
-                          {answer.difficulty}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">Question {index + 1}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Time: {formatTime(answer.timeSpent * 1000)}
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <div>
-                        <strong className="text-xs">Question:</strong>
-                        <p className="text-xs mt-1">{answer.question}</p>
-                      </div>
-                      <div>
-                        <strong className="text-xs">Answer:</strong>
-                        <p className="text-xs mt-1 bg-muted p-2 rounded">
-                          {answer.answer}
-                        </p>
-                      </div>
+            <div className="flex-1 overflow-y-auto">
+              <div className="p-4 space-y-4">
+                {/* Candidate Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="border rounded p-3">
+                    <h4 className="font-medium mb-1 text-sm">Contact Information</h4>
+                    <div className="space-y-1 text-xs">
+                      <p><strong>Name:</strong> {selectedCandidate.name}</p>
+                      <p><strong>Email:</strong> {selectedCandidate.email}</p>
+                      <p><strong>Phone:</strong> {selectedCandidate.phone}</p>
                     </div>
                   </div>
-                ))}
+                  <div className="border rounded p-3">
+                    <h4 className="font-medium mb-1 text-sm">Interview Summary</h4>
+                    <div className="space-y-1 text-xs">
+                      <p><strong>Status:</strong> {selectedCandidate.interviewStatus.replace('_', ' ')}</p>
+                      <p><strong>Score:</strong> {selectedCandidate.finalScore || 'Pending'}/100</p>
+                      <p><strong>Duration:</strong> {selectedCandidate.totalTime ? formatTime(selectedCandidate.totalTime) : 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Questions and Answers */}
+                <div>
+                  <h4 className="font-medium mb-2 text-sm">Interview Questions & Answers</h4>
+                  <div className="space-y-2">
+                    {selectedCandidate.answers && selectedCandidate.answers.length > 0 ? (
+                      selectedCandidate.answers.map((answer, index) => (
+                        <div key={answer.questionId} className="border rounded p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center space-x-1">
+                            <span className="text-xs text-muted-foreground">Question {index + 1}</span>
+                              <Badge className={`text-xs px-1.5 py-0.5 ${getDifficultyColor(answer.difficulty)}`}>
+                                {answer.difficulty}
+                              </Badge>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Time: {formatTime(answer.timeSpent * 1000)}
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <div>
+                              <strong className="text-xs">Question:</strong>
+                              <p className="text-xs mt-1">{answer.question}</p>
+                            </div>
+                            <div>
+                              <strong className="text-xs">Answer:</strong>
+                              <p className="text-xs mt-1 bg-muted p-2 rounded">
+                                {answer.answer}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="border rounded p-4 text-center text-sm text-muted-foreground">
+                        No questions available
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* AI Summary */}
+                {selectedCandidate.aiSummary && (
+                  <div className="border rounded p-3">
+                    <h4 className="font-medium mb-1 text-sm">AI Summary</h4>
+                    <div className="bg-accent p-2 rounded">
+                      <p className="text-xs">{selectedCandidate.aiSummary}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* AI Summary */}
-            {candidate.aiSummary && (
-              <div>
-                <h4 className="font-medium mb-1 text-sm">AI Summary</h4>
-                <div className="bg-accent p-2 rounded">
-                  <p className="text-xs">{candidate.aiSummary}</p>
-                </div>
-              </div>
-            )}
           </div>
-        </DialogContent>
-      </Dialog>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-8 px-2 text-destructive hover:text-destructive cursor-pointer !bg-transparent hover:!bg-transparent active:!bg-transparent focus:!bg-transparent"
-        onClick={() => deleteCandidate(candidate.id)}
-        style={{
-          background: "transparent",
-        }}
-      >
-        <IconTrash size={14} aria-hidden="true" />
-        <span className="ml-1 hidden sm:inline">Delete</span>
-      </Button>
+        </div>
+      )}
     </div>
   )
 }
