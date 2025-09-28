@@ -55,7 +55,7 @@ export interface InterviewState {
 }
 
 export interface InterviewActions {
-  addCandidate: (candidate: Omit<Candidate, 'id' | 'interviewStatus' | 'currentQuestionIndex' | 'answers'>) => void
+  addCandidate: (candidate: Omit<Candidate, 'id' | 'interviewStatus' | 'currentQuestionIndex' | 'answers'>) => string
   updateCandidate: (id: string, updates: Partial<Candidate>) => void
   setCurrentCandidate: (id: string | null) => void
   startInterview: (candidateId: string) => void
@@ -203,6 +203,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         set((state) => ({
           candidates: [...state.candidates, newCandidate]
         }))
+        return newCandidate.id
       },
 
       updateCandidate: (id, updates) => {
@@ -248,7 +249,24 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
 
       submitAnswer: (answer, timeSpent) => {
         const state = get()
-        if (!state.currentCandidateId || !state.currentQuestion) return
+        if (!state.isInterviewActive) {
+          console.error('Cannot submit answer: interview not active')
+          return
+        }
+        if (!state.currentCandidateId || !state.currentQuestion) {
+          console.error('Cannot submit answer: missing currentCandidateId or currentQuestion', {
+            currentCandidateId: state.currentCandidateId,
+            currentQuestion: state.currentQuestion,
+            isInterviewActive: state.isInterviewActive
+          })
+          return
+        }
+
+        const candidate = state.candidates.find(c => c.id === state.currentCandidateId)
+        if (!candidate) {
+          console.error('Cannot submit answer: candidate not found', state.currentCandidateId)
+          return
+        }
 
         const newAnswer: Answer = {
           questionId: state.currentQuestion.id,
@@ -260,7 +278,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         }
 
         get().updateCandidate(state.currentCandidateId, {
-          answers: [...state.candidates.find(c => c.id === state.currentCandidateId)!.answers, newAnswer]
+          answers: [...candidate.answers, newAnswer]
         })
       },
 
@@ -300,9 +318,14 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         const state = get()
         if (!state.currentCandidateId) return
 
-        const endTime = new Date()
         const candidate = state.candidates.find(c => c.id === state.currentCandidateId)
-        const startTime = candidate?.startTime
+        if (!candidate) {
+          console.error('Cannot complete interview: candidate not found', state.currentCandidateId)
+          return
+        }
+
+        const endTime = new Date()
+        const startTime = candidate.startTime
 
         get().updateCandidate(state.currentCandidateId, {
           interviewStatus: 'completed',
@@ -478,7 +501,24 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         interviewStartTime: state.interviewStartTime,
         questionStartTime: state.questionStartTime,
         showFeedbackCompletion: state.showFeedbackCompletion
-      })
+      }),
+      onRehydrateStorage: () => (state) => {
+        // Validate state consistency after rehydration
+        if (state && state.currentCandidateId) {
+          const candidate = state.candidates?.find(c => c.id === state.currentCandidateId)
+          if (!candidate) {
+            // Candidate ID exists but candidate not found - reset interview state
+            console.warn('State inconsistency detected: currentCandidateId exists but candidate not found. Resetting interview state.')
+            state.currentCandidateId = null
+            state.isInterviewActive = false
+            state.currentQuestion = null
+            state.timeRemaining = 0
+            state.interviewStartTime = null
+            state.questionStartTime = null
+            state.showFeedbackCompletion = false
+          }
+        }
+      }
     }
   )
 )

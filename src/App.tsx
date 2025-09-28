@@ -20,32 +20,36 @@ function App() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center py-2">
-      <main className="container mx-auto px-2">
-        <div className="w-full space-y-2 mx-auto">
-          <div
-            className="flex items-center justify-center px-3 py-2 w-full bg-secondary"
-            style={{ borderRadius: 'var(--radius)' }}
-          >
-            <h1 className="text-sm font-semibold text-center">AI-Powered Interview Assistant (Crisp)</h1>
-          </div>
-          <Component defaultValue="interviewee" className="w-full bg-muted rounded-lg">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="interviewee" className="text-sm cursor-pointer">Interviewee</TabsTrigger>
-              <TabsTrigger value="interviewer" className="text-sm cursor-pointer">Interviewer</TabsTrigger>
-            </TabsList>
-
-            <TabsContents className="mx-1 mb-1 -mt-2 rounded-sm h-full bg-background">
-              <TabsContent value="interviewee" className="space-y-4 p-6">
-                <IntervieweeTab />
-              </TabsContent>
-
-              <TabsContent value="interviewer" className="space-y-4 p-6">
-                <InterviewerTab />
-              </TabsContent>
-            </TabsContents>
-          </Component>
+    <div className="min-h-screen max-h-screen bg-background flex flex-col p-2 sm:p-2 gap-1 sm:gap-2 overflow-hidden">
+      {/* Header - Fixed height */}
+      <header className="flex-shrink-0">
+        <div
+          className="flex items-center justify-center py-3 w-full bg-secondary rounded-md sm:rounded-lg"
+        >
+          <h1 className="text-xs sm:text-sm font-semibold text-center px-1">AI-Powered Interview Assistant (Crisp)</h1>
         </div>
+      </header>
+
+      {/* Main content - Takes remaining height */}
+      <main className="flex-1 flex flex-col min-h-0">
+        <Component defaultValue="interviewee" className="w-full bg-muted rounded-md sm:rounded-lg flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Tabs triggers - Fixed height */}
+          <TabsList className="grid w-full grid-cols-2 flex-shrink-0">
+            <TabsTrigger value="interviewee" className="text-xs sm:text-sm cursor-pointer px-2 sm:px-4">Interviewee</TabsTrigger>
+            <TabsTrigger value="interviewer" className="text-xs sm:text-sm cursor-pointer px-2 sm:px-4">Interviewer</TabsTrigger>
+          </TabsList>
+
+          {/* Tabs content - Takes remaining height with proper overflow */}
+          <TabsContents className="flex-1 min-h-0 mx-0.5 sm:mx-1 mb-0.5 sm:mb-1 -mt-0.5 sm:-mt-1 rounded-sm bg-background overflow-hidden">
+            <TabsContent value="interviewee" className="h-full">
+              <IntervieweeTab />
+            </TabsContent>
+
+            <TabsContent value="interviewer" className="h-full">
+              <InterviewerTab />
+            </TabsContent>
+          </TabsContents>
+        </Component>
       </main>
 
       <Toaster />

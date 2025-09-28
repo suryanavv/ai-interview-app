@@ -66,7 +66,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { useInterviewStore, type Candidate } from "@/store/interviewStore"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -233,6 +232,8 @@ export function InterviewerTab() {
     startTime: true,
   })
   const inputRef = useRef<HTMLInputElement>(null)
+  const headerScrollRef = useRef<HTMLDivElement>(null)
+  const bodyScrollRef = useRef<HTMLDivElement>(null)
 
   const [sorting, setSorting] = useState<SortingState>([
     {
@@ -245,7 +246,63 @@ export function InterviewerTab() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [sortingEnabled, setSortingEnabled] = useState<boolean>(true)
 
-  const { candidates, deleteCandidate } = useInterviewStore()
+  const { candidates, deleteCandidate, addCandidate, updateCandidate } = useInterviewStore()
+
+  // Add dummy candidates if none exist
+  useEffect(() => {
+    if (candidates.length === 0) {
+      const dummyCandidates = [
+        { name: "John Smith", email: "john.smith@email.com", phone: "+1-555-0101", interviewStatus: "completed", finalScore: 85 },
+        { name: "Sarah Johnson", email: "sarah.johnson@email.com", phone: "+1-555-0102", interviewStatus: "completed", finalScore: 92 },
+        { name: "Michael Brown", email: "michael.brown@email.com", phone: "+1-555-0103", interviewStatus: "completed", finalScore: 78 },
+        { name: "Emily Davis", email: "emily.davis@email.com", phone: "+1-555-0104", interviewStatus: "in_progress", finalScore: undefined },
+        { name: "David Wilson", email: "david.wilson@email.com", phone: "+1-555-0105", interviewStatus: "completed", finalScore: 88 },
+        { name: "Lisa Anderson", email: "lisa.anderson@email.com", phone: "+1-555-0106", interviewStatus: "completed", finalScore: 76 },
+        { name: "Robert Taylor", email: "robert.taylor@email.com", phone: "+1-555-0107", interviewStatus: "completed", finalScore: 91 },
+        { name: "Jennifer Martinez", email: "jennifer.martinez@email.com", phone: "+1-555-0108", interviewStatus: "not_started", finalScore: undefined },
+        { name: "James Garcia", email: "james.garcia@email.com", phone: "+1-555-0109", interviewStatus: "completed", finalScore: 83 },
+        { name: "Maria Rodriguez", email: "maria.rodriguez@email.com", phone: "+1-555-0110", interviewStatus: "completed", finalScore: 89 },
+        { name: "Christopher Lee", email: "christopher.lee@email.com", phone: "+1-555-0111", interviewStatus: "completed", finalScore: 74 },
+        { name: "Amanda White", email: "amanda.white@email.com", phone: "+1-555-0112", interviewStatus: "in_progress", finalScore: undefined },
+        { name: "Daniel Harris", email: "daniel.harris@email.com", phone: "+1-555-0113", interviewStatus: "completed", finalScore: 87 },
+        { name: "Jessica Clark", email: "jessica.clark@email.com", phone: "+1-555-0114", interviewStatus: "completed", finalScore: 82 },
+        { name: "Matthew Lewis", email: "matthew.lewis@email.com", phone: "+1-555-0115", interviewStatus: "not_started", finalScore: undefined },
+      ]
+
+      dummyCandidates.forEach((candidate, index) => {
+        // Add basic candidate info first
+        const candidateId = addCandidate({
+          name: candidate.name,
+          email: candidate.email,
+          phone: candidate.phone,
+        })
+
+        // Then update with additional properties
+        const startTime = new Date(Date.now() - (index * 24 * 60 * 60 * 1000)) // Spread over last 15 days
+        const totalTime = candidate.interviewStatus === "completed" ? Math.floor(Math.random() * 1800) + 600 : undefined // 10-40 minutes
+
+        const updates: any = {
+          interviewStatus: candidate.interviewStatus,
+          currentQuestionIndex: candidate.interviewStatus === "completed" ? 6 : candidate.interviewStatus === "in_progress" ? Math.floor(Math.random() * 6) : 0,
+        }
+
+        if (candidate.finalScore !== undefined) {
+          updates.finalScore = candidate.finalScore
+        }
+
+        if (candidate.interviewStatus !== "not_started") {
+          updates.startTime = startTime
+        }
+
+        if (totalTime !== undefined) {
+          updates.totalTime = totalTime
+        }
+
+        // Use updateCandidate to set the additional properties
+        updateCandidate(candidateId, updates)
+      })
+    }
+  }, [candidates.length, addCandidate])
 
   // Sync sorting state with selected field and direction
   useEffect(() => {
@@ -260,6 +317,29 @@ export function InterviewerTab() {
       setSorting([])
     }
   }, [selectedSortField, sortDirection, sortingEnabled])
+
+  // Synchronize horizontal scrolling between header and body
+  useEffect(() => {
+    const headerScroll = headerScrollRef.current
+    const bodyScroll = bodyScrollRef.current
+
+    if (!headerScroll || !bodyScroll) return
+
+    const syncScroll = (source: HTMLElement, target: HTMLElement) => {
+      target.scrollLeft = source.scrollLeft
+    }
+
+    const handleHeaderScroll = () => syncScroll(headerScroll, bodyScroll)
+    const handleBodyScroll = () => syncScroll(bodyScroll, headerScroll)
+
+    headerScroll.addEventListener('scroll', handleHeaderScroll)
+    bodyScroll.addEventListener('scroll', handleBodyScroll)
+
+    return () => {
+      headerScroll.removeEventListener('scroll', handleHeaderScroll)
+      bodyScroll.removeEventListener('scroll', handleBodyScroll)
+    }
+  }, [])
 
   const handleDeleteRows = () => {
     const selectedRows = table.getSelectedRowModel().rows
@@ -329,62 +409,65 @@ export function InterviewerTab() {
   }
 
   return (
-    <div className="w-fullmx-auto space-y-4">
-      {/* Candidates List */}
-      <div className="">
-        <div className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-2 sm:space-y-0">
-            <div>
-              <h2 className="flex items-center space-x-2 text-lg font-semibold">
-                <span>Candidates ({table.getFilteredRowModel().rows.length})</span>
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                View all interview candidates ordered by score
-              </p>
-            </div>
+    <div className="h-full flex flex-col overflow-hidden p-2 sm:p-4">
+      {/* Header - Fixed height */}
+      <div className="flex-shrink-0 pb-2 sm:pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-1 sm:space-y-0">
+          <div>
+            <h2 className="flex items-center space-x-1 sm:space-x-2 text-base sm:text-lg font-semibold">
+              <span>Candidates ({table.getFilteredRowModel().rows.length})</span>
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              View all interview candidates ordered by score
+            </p>
           </div>
         </div>
-        <div>
+      </div>
+      
+      {/* Content - Scrollable */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {/* Filters */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <div className="flex items-center gap-3">
-              {/* Filter by name or email */}
-              <div className="relative">
-                <Input
-                  id={`${id}-input`}
-                  ref={inputRef}
-                  className={cn(
-                    "peer min-w-60 ps-9",
-                    Boolean(table.getColumn("name")?.getFilterValue()) && "pe-9"
-                  )}
-                  value={
-                    (table.getColumn("name")?.getFilterValue() ?? "") as string
-                  }
-                  onChange={(e) =>
-                    table.getColumn("name")?.setFilterValue(e.target.value)
-                  }
-                  placeholder="Filter by name or email..."
-                  type="text"
-                  aria-label="Filter by name or email"
-                />
-                <div className="text-muted-foreground/80 pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
-                  <SearchIcon size={16} aria-hidden="true" />
-                </div>
-                {Boolean(table.getColumn("name")?.getFilterValue()) && (
-                  <button
-                    className="text-muted-foreground/80 hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-[color,box-shadow] outline-none focus:z-10 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed cursor-pointer"
-                    aria-label="Clear filter"
-                    onClick={() => {
-                      table.getColumn("name")?.setFilterValue("")
-                      if (inputRef.current) {
-                        inputRef.current.focus()
-                      }
-                    }}
-                  >
-                    <CircleXIcon size={16} aria-hidden="true" />
-                  </button>
+          <div className="flex flex-col gap-3 mb-4">
+            {/* Search input - full width on first line */}
+            <div className="relative w-full">
+              <Input
+                id={`${id}-input`}
+                ref={inputRef}
+                className={cn(
+                  "peer ps-9",
+                  Boolean(table.getColumn("name")?.getFilterValue()) && "pe-9"
                 )}
+                value={
+                  (table.getColumn("name")?.getFilterValue() ?? "") as string
+                }
+                onChange={(e) =>
+                  table.getColumn("name")?.setFilterValue(e.target.value)
+                }
+                placeholder="Filter by name or email..."
+                type="text"
+                aria-label="Filter by name or email"
+              />
+              <div className="text-muted-foreground/80 pointer-events-none absolute inset-y-0 start-0 flex items-center justify-center ps-3 peer-disabled:opacity-50">
+                <SearchIcon size={16} aria-hidden="true" />
               </div>
+              {Boolean(table.getColumn("name")?.getFilterValue()) && (
+                <button
+                  className="text-muted-foreground/80 hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 absolute inset-y-0 end-0 flex h-full w-9 items-center justify-center rounded-e-md transition-[color,box-shadow] outline-none focus:z-10 focus-visible:ring-[3px] disabled:pointer-events-none disabled:cursor-not-allowed cursor-pointer"
+                  aria-label="Clear filter"
+                  onClick={() => {
+                    table.getColumn("name")?.setFilterValue("")
+                    if (inputRef.current) {
+                      inputRef.current.focus()
+                    }
+                  }}
+                >
+                  <CircleXIcon size={16} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+
+            {/* Filter controls - second line */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               {/* Filter by status */}
               <Popover>
                 <PopoverTrigger asChild>
@@ -499,19 +582,16 @@ export function InterviewerTab() {
                   <ArrowDownIcon size={14} />
                 )}
               </Button>
-            </div>
-            <div className="flex items-center gap-3">
               {/* Delete button */}
               {table.getSelectedRowModel().rows.length > 0 && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button className="ml-auto text-destructive hover:text-destructive border-destructive/20 hover:bg-destructive/20 cursor-pointer" variant="outline" size="sm">
+                    <Button className="text-destructive hover:text-destructive border-destructive/20 hover:bg-destructive/20 cursor-pointer ml-auto" variant="outline" size="sm">
                       <TrashIcon
-                        className="-ms-1 opacity-60"
+                        className="-ms-1"
                         size={14}
                         aria-hidden="true"
                       />
-                      Delete
                       <span className="bg-background text-muted-foreground/70 -me-1 inline-flex h-4 max-h-full items-center rounded border px-1 font-[inherit] text-[0.625rem] font-medium">
                         {table.getSelectedRowModel().rows.length}
                       </span>
@@ -556,30 +636,37 @@ export function InterviewerTab() {
 
           {/* Table */}
           <div className="relative">
-            <Table className="table-fixed">
-              <TableHeader className="sticky top-0 z-10 bg-background border-b">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id} className="hover:bg-transparent">
-                    {headerGroup.headers.map((header) => {
-                      return (
-                        <TableHead
-                          key={header.id}
-                          style={{ width: `${header.getSize()}px` }}
-                          className="h-9 text-xs sticky top-0 bg-background z-10"
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext()
-                          )}
-                        </TableHead>
-                      )
-                    })}
-                  </TableRow>
-                ))}
-              </TableHeader>
-            </Table>
-            <ScrollArea className="h-94 bg-background">
-              <Table className="table-fixed">
+            {/* Fixed Header */}
+            <div className="absolute top-0 left-0 right-0 z-50 bg-background border-b">
+              <div ref={headerScrollRef} className="overflow-x-auto">
+                <Table className="table-fixed min-w-[600px]">
+                  <TableHeader>
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <TableRow key={headerGroup.id} className="hover:bg-transparent">
+                        {headerGroup.headers.map((header) => {
+                          return (
+                            <TableHead
+                              key={header.id}
+                              style={{ width: `${header.getSize()}px` }}
+                              className="h-9 text-xs bg-background px-1 sm:px-2"
+                            >
+                              {flexRender(
+                                header.column.columnDef.header,
+                                header.getContext()
+                              )}
+                            </TableHead>
+                          )
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                </Table>
+              </div>
+            </div>
+
+            {/* Scrollable Body */}
+            <div ref={bodyScrollRef} className="pt-9 h-130 sm:h-96 bg-background overflow-auto">
+              <Table className="table-fixed min-w-[600px]">
                 <TableBody>
                   {table.getRowModel().rows?.length ? (
                     table.getRowModel().rows.map((row) => (
@@ -592,7 +679,7 @@ export function InterviewerTab() {
                           <TableCell
                             key={cell.id}
                             style={{ width: `${cell.column.getSize()}px` }}
-                            className="last:py-0 py-1 text-xs"
+                            className="last:py-0 py-1 text-xs px-1 sm:px-2"
                           >
                             {flexRender(
                               cell.column.columnDef.cell,
@@ -614,10 +701,8 @@ export function InterviewerTab() {
                   )}
                 </TableBody>
               </Table>
-            </ScrollArea>
+            </div>
           </div>
-
-        </div>
       </div>
     </div>
   )
@@ -639,13 +724,13 @@ function RowActions({ row }: { row: Row<Candidate> }) {
             }}
           >
             <EyeIcon size={14} aria-hidden="true" />
-            <span className="ml-1">View</span>
+            <span className="ml-1 hidden sm:inline">View</span>
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto mx-2 sm:mx-4">
           <DialogHeader className="pb-3">
-            <DialogTitle className="text-lg">{candidate.name} - Interview Details</DialogTitle>
-            <DialogDescription className="text-sm">
+            <DialogTitle className="text-base sm:text-lg">{candidate.name} - Interview Details</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
               Complete interview history and evaluation
             </DialogDescription>
           </DialogHeader>
@@ -727,7 +812,7 @@ function RowActions({ row }: { row: Row<Candidate> }) {
         }}
       >
         <TrashIcon size={14} aria-hidden="true" />
-        <span className="ml-1">Delete</span>
+        <span className="ml-1 hidden sm:inline">Delete</span>
       </Button>
     </div>
   )

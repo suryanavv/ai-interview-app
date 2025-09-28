@@ -802,16 +802,16 @@ export const TabsContents = ({
   return (
     <div
       data-slot="tabs-contents"
-      className={cn('overflow-hidden', className)}
+      className={cn('overflow-hidden flex-1 min-h-0', className)}
       {...props}
     >
       <motion.div
-        className="flex -mx-2"
+        className="flex h-full"
         animate={{ x: activeIndex * -100 + '%' }}
         transition={transition}
       >
         {childrenArray.map((child, index) => (
-          <div key={index} className="w-full shrink-0 px-2">
+          <div key={index} className="w-full shrink-0 h-full">
             {child}
           </div>
         ))}
@@ -837,7 +837,7 @@ export const TabsContent = ({
     <motion.div
       role="tabpanel"
       data-slot="tabs-content"
-      className={cn('overflow-hidden', className)}
+      className={cn('h-full', className)}
       initial={{ filter: 'blur(0px)' }}
       animate={{ filter: isActive ? 'blur(0px)' : 'blur(4px)' }}
       exit={{ filter: 'blur(0px)' }}
