@@ -69,7 +69,7 @@ An AI-powered interview assistant built with React that streamlines the intervie
 
 5. **Build for production**
 ```bash
-npm run build
+   npm run build
    npm run preview
    ```
 

@@ -21,36 +21,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Separate large libraries into their own chunks for better caching
-          if (id.includes('node_modules')) {
-            // React core
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react/jsx-runtime')) {
-              return 'react-vendor';
-            }
-            // UI libraries (Radix UI, Tabler icons)
-            if (id.includes('@radix-ui') || id.includes('@tabler') || id.includes('cmdk') || id.includes('class-variance-authority')) {
-              return 'ui-vendor';
-            }
-            // AI libraries
-            if (id.includes('ai') || id.includes('openrouter') || id.includes('@openrouter')) {
-              return 'ai-vendor';
-            }
-            // File processing libraries
-            if (id.includes('pdfjs') || id.includes('mammoth') || id.includes('react-pdf')) {
-              return 'pdf-vendor';
-            }
-            // State management and utilities
-            if (id.includes('zustand') || id.includes('date-fns') || id.includes('clsx') || id.includes('tailwind-merge')) {
-              return 'utils-vendor';
-            }
-            // Form libraries
-            if (id.includes('react-hook-form') || id.includes('@hookform') || id.includes('zod')) {
-              return 'form-vendor';
-            }
-            // Other vendor libraries
-            return 'vendor';
-          }
-          // Separate large application chunks
+          // Only separate large application chunks to avoid vendor library conflicts
           if (id.includes('components/IntervieweeTab')) {
             return 'interviewee-tab';
           }

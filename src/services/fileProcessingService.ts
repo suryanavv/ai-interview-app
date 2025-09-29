@@ -1,8 +1,26 @@
-import * as pdfjsLib from 'pdfjs-dist'
-import mammoth from 'mammoth'
+import type { PDFPageProxy } from 'pdfjs-dist'
 
-// Configure PDF.js worker - use local worker file
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+// Dynamic import for mammoth to avoid bundling issues
+let mammothLib: any = null
+
+const initMammoth = async () => {
+  if (!mammothLib) {
+    mammothLib = await import('mammoth')
+  }
+  return mammothLib.default || mammothLib
+}
+
+// Dynamic import for PDF.js to avoid bundling issues
+let pdfjsLib: typeof import('pdfjs-dist') | null = null
+
+const initPDFJS = async () => {
+  if (!pdfjsLib) {
+    pdfjsLib = await import('pdfjs-dist')
+    // Configure PDF.js worker - use local worker file
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+  }
+  return pdfjsLib
+}
 
 
 export class FileProcessingService {
@@ -12,8 +30,11 @@ export class FileProcessingService {
   static async extractTextFromPDF(file: File): Promise<string> {
     const arrayBuffer = await file.arrayBuffer()
 
+    // Initialize PDF.js dynamically
+    const pdfjs = await initPDFJS()
+
     // Configure PDF.js for better performance
-    const loadingTask = pdfjsLib.getDocument({
+    const loadingTask = pdfjs.getDocument({
       data: arrayBuffer,
       cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.8.69/cmaps/',
       cMapPacked: true,
@@ -37,11 +58,11 @@ export class FileProcessingService {
 
       for (let i = batchStart; i <= batchEnd; i++) {
         pagePromises.push(
-          pdf.getPage(i).then(async (page) => {
+          pdf.getPage(i).then(async (page: PDFPageProxy) => {
             try {
               const textContent = await page.getTextContent()
               const pageText = textContent.items
-                .map((item) => 'str' in item ? item.str : '')
+                .map((item: any) => 'str' in item ? item.str : '')
                 .join(' ')
                 .replace(/\s+/g, ' ') // Normalize whitespace
                 .trim()
@@ -66,8 +87,8 @@ export class FileProcessingService {
    */
   static async extractTextFromDOCX(file: File): Promise<string> {
     const arrayBuffer = await file.arrayBuffer()
+    const mammoth = await initMammoth()
     const result = await mammoth.extractRawText({ arrayBuffer })
-
 
     return result.value
   }
