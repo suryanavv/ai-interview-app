@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, memo, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,8 +11,9 @@ import { useInterviewStore } from "@/store/interviewStore"
 import { toast } from "sonner"
 import { useFileUpload } from "@/hooks/use-file-upload"
 import { FileProcessingService, DataProcessingService, type ExtractedData, type MissingFields } from "@/services"
+import { formatTime, getDifficultyColor } from "@/lib/utils"
 
-export function IntervieweeTab() {
+export const IntervieweeTab = memo(() => {
   const maxSizeMB = 5
   const maxSize = maxSizeMB * 1024 * 1024 // 5MB default
 
@@ -43,6 +45,8 @@ export function IntervieweeTab() {
   const [canStartInterview, setCanStartInterview] = useState(false)
   const [currentAnswer, setCurrentAnswer] = useState("")
   const [timeElapsed, setTimeElapsed] = useState(0)
+  const [isProcessingFile, setIsProcessingFile] = useState(false)
+  const [showResultsOverlay, setShowResultsOverlay] = useState(false)
 
   const {
     currentCandidateId,
@@ -57,6 +61,7 @@ export function IntervieweeTab() {
     tickTimer,
     resetInterview,
     showFeedbackCompletion,
+    lastCompletedCandidateId,
     returnToHome,
     showWelcomeBackModal,
     unfinishedSession,
@@ -64,27 +69,45 @@ export function IntervieweeTab() {
     setShowWelcomeBackModal,
     handleResumeInterview,
     handleStartNew,
+    isSubmittingAnswer,
+    setIsSubmittingAnswer,
+    isStartingInterview,
+    setIsStartingInterview,
+    isTransitioningQuestions,
+    setIsTransitioningQuestions,
+    startQuestionTimer,
   } = useInterviewStore()
 
 
   const currentCandidate = candidates.find(c => c.id === currentCandidateId)
 
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = useCallback(async (file: File) => {
+    if (isProcessingFile) return // Prevent multiple simultaneous uploads
+
     // Validate file using the service
     const validation = FileProcessingService.validateFile(file, maxSizeMB)
     if (!validation.isValid) {
-      toast.error("File validation failed", {
-        description: validation.error
+      toast.error("Invalid file", {
+        description: validation.error || "Please select a valid PDF or DOCX file."
       })
       return
     }
 
+    setIsProcessingFile(true)
     setIsProcessing(true)
 
     try {
+      toast.loading("Analyzing your resume...", {
+        id: "file-processing"
+      })
+
       // Extract text from file using the service
       const text = await FileProcessingService.extractTextFromFile(file)
+
+      if (!text || text.trim().length === 0) {
+        throw new Error("No readable content found in the file")
+      }
 
       // Extract fields from text using the service
       const extracted = DataProcessingService.extractFields(text)
@@ -94,26 +117,46 @@ export function IntervieweeTab() {
       const missing = DataProcessingService.getMissingFields(extracted)
       setMissingFields(missing)
 
-      // Show success message
-      toast.success("AI Resume Analysis Complete", {
-        description: `Successfully extracted profile information. ${Object.values(missing).filter(Boolean).length} additional details needed.`
+      const missingCount = Object.values(missing).filter(Boolean).length
+
+      toast.dismiss("file-processing")
+      toast.success("Resume analysis complete!", {
+        description: `Successfully extracted profile information. ${missingCount > 0 ? `${missingCount} field${missingCount === 1 ? '' : 's'} need${missingCount === 1 ? 's' : ''} your attention.` : 'All information extracted successfully!'}`
       })
 
       // Check if all fields are available (either extracted or can be filled manually)
       setCanStartInterview(true)
-      toast.success("Ready for AI Assessment", {
-        description: "Profile information extracted."
-      })
 
     } catch (error) {
       console.error("Error processing file:", error)
-      toast.error("Processing failed", {
-        description: "Unable to process the file. Please ensure it's a valid PDF or DOCX and try again."
+      toast.dismiss("file-processing")
+
+      // Provide user-friendly error messages
+      let errorMessage = "Unable to process your resume."
+      let errorDescription = "Please ensure it's a valid PDF or DOCX file and try again."
+
+      if (error instanceof Error) {
+        if (error.message.includes("content")) {
+          errorMessage = "Resume content extraction failed"
+          errorDescription = "The file appears to be empty or corrupted. Please try with a different file."
+        } else if (error.message.includes("network") || error.message.includes("fetch")) {
+          errorMessage = "Connection issue"
+          errorDescription = "Please check your internet connection and try again."
+        } else if (error.message.includes("size")) {
+          errorMessage = "File too large"
+          errorDescription = `Please select a file smaller than ${maxSizeMB}MB.`
+        }
+      }
+
+      toast.error(errorMessage, {
+        description: errorDescription,
+        duration: 5000
       })
     } finally {
       setIsProcessing(false)
+      setIsProcessingFile(false)
     }
-  }
+  }, [maxSizeMB])
 
   const handleRemoveFile = () => {
     if (files[0]?.id) {
@@ -130,12 +173,17 @@ export function IntervieweeTab() {
     return DataProcessingService.getFieldStatus(field, extractedData, collectedData)
   }
 
-  // Timer effect - handles countdown and auto-submission
+  // Timer effect - handles countdown and auto-submission with requestAnimationFrame for better performance
   useEffect(() => {
-    let interval: number | null = null
+    let animationFrameId: number | null = null
+    let lastTime = Date.now()
 
-    if (isInterviewActive) {
-      interval = setInterval(() => {
+    const tick = () => {
+      const currentTime = Date.now()
+      const deltaTime = currentTime - lastTime
+
+      // Only update every second
+      if (deltaTime >= 1000) {
         // Double-check that interview is still active
         const { isInterviewActive: currentIsActive } = useInterviewStore.getState()
         if (!currentIsActive) {
@@ -143,6 +191,7 @@ export function IntervieweeTab() {
         }
 
         setTimeElapsed(prev => prev + 1)
+        lastTime = currentTime
 
         // Use store's tickTimer method
         const timeUp = tickTimer()
@@ -154,22 +203,45 @@ export function IntervieweeTab() {
             submitAnswer(currentAnswer, timeElapsed)
             setCurrentAnswer("")
             setTimeElapsed(0)
-            nextQuestion()
+            // Handle async nextQuestion call
+            nextQuestion().catch((error: unknown) => {
+              console.error('Error moving to next question:', error)
+            })
           } else {
             // No answer provided - submit empty answer and move to next question
             submitAnswer("", 0) // 0 score for no answer
-            nextQuestion()
+            // Handle async nextQuestion call
+            nextQuestion().catch((error: unknown) => {
+              console.error('Error moving to next question:', error)
+            })
           }
         }
-      }, 1000)
+      }
+
+      if (isInterviewActive) {
+        animationFrameId = requestAnimationFrame(tick)
+      }
+    }
+
+    if (isInterviewActive) {
+      animationFrameId = requestAnimationFrame(tick)
     }
 
     return () => {
-      if (interval) {
-        clearInterval(interval)
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId)
       }
     }
-  }, [isInterviewActive, tickTimer, submitAnswer, nextQuestion]) // Removed currentAnswer from dependencies
+  }, [isInterviewActive, tickTimer, submitAnswer, nextQuestion, currentAnswer])
+
+  // Start question timer only after the question is displayed
+  useEffect(() => {
+    if (isInterviewActive && currentQuestion) {
+      // Defer slightly to ensure paint
+      const id = window.requestAnimationFrame(() => startQuestionTimer())
+      return () => cancelAnimationFrame(id)
+    }
+  }, [isInterviewActive, currentQuestion, startQuestionTimer])
 
   // Auto-process file when uploaded
   useEffect(() => {
@@ -198,6 +270,7 @@ export function IntervieweeTab() {
       setCollectedData({})
       setCurrentAnswer("")
       setTimeElapsed(0)
+      setIsTransitioningQuestions(false)
     }
 
     window.addEventListener('resetResumeUpload', handleResetResumeUpload)
@@ -207,6 +280,20 @@ export function IntervieweeTab() {
     }
   }, [files, removeFileFromHook])
 
+
+
+  useEffect(() => {
+    // Lock body scroll when results overlay is open
+    if (showResultsOverlay) {
+      document.body.classList.add('overflow-hidden')
+    } else {
+      document.body.classList.remove('overflow-hidden')
+    }
+
+    return () => {
+      document.body.classList.remove('overflow-hidden')
+    }
+  }, [showResultsOverlay])
 
   useEffect(() => {
     const { candidates } = useInterviewStore.getState()
@@ -223,8 +310,11 @@ export function IntervieweeTab() {
 
 
 
-  const handleStartInterview = () => {
+  const handleStartInterview = async () => {
     if (!extractedData && !collectedData.name) return
+    if (isStartingInterview) return // Prevent multiple clicks
+
+    setIsStartingInterview(true)
 
     const candidateData = {
       name: extractedData?.name || collectedData.name || '',
@@ -232,7 +322,6 @@ export function IntervieweeTab() {
       phone: extractedData?.phone || collectedData.phone || '',
       extractedData: extractedData || undefined
     }
-
 
     // Reset any existing interview state first
     resetInterview()
@@ -244,71 +333,284 @@ export function IntervieweeTab() {
     // Add the new candidate and get the ID directly
     const candidateId = addCandidate(candidateData)
 
-    console.log('Starting interview for candidate ID:', candidateId)
-    startInterview(candidateId)
+
+    try {
+      // Show loading state for AI question generation
+      toast.loading("Generating personalized questions...", {
+        id: "ai-questions-loading",
+        description: "This may take a few moments"
+      })
+
+      await startInterview(candidateId)
+
+      toast.dismiss("ai-questions-loading")
+      toast.success("Interview ready!", {
+        description: "Your personalized assessment is about to begin."
+      })
+
+    } catch (error) {
+      console.error('Error starting interview:', error)
+      toast.dismiss("ai-questions-loading")
+
+      // Provide user-friendly error messages
+      let errorMessage = "Unable to start assessment"
+      let errorDescription = "Using standard questions instead. Click to continue."
+
+      if (error instanceof Error) {
+        if (error.message.includes("API") || error.message.includes("network")) {
+          errorMessage = "Connection issue"
+          errorDescription = "Unable to connect to AI services. Using standard questions instead."
+        } else if (error.message.includes("key") || error.message.includes("auth")) {
+          errorMessage = "Service configuration issue"
+          errorDescription = "AI services are temporarily unavailable. Using standard questions instead."
+        }
+      }
+
+      toast.error(errorMessage, {
+        description: errorDescription,
+        duration: 4000
+      })
+
+      // Try to start with standard questions as fallback
+      try {
+        toast.loading("Starting with standard questions...", {
+          id: "fallback-questions-loading"
+        })
+
+        await startInterview(candidateId)
+
+        toast.dismiss("fallback-questions-loading")
+        toast.success("Assessment starting!", {
+          description: "Using standard questions for your evaluation."
+        })
+
+      } catch (fallbackError) {
+        console.error('Fallback interview start failed:', fallbackError)
+        toast.dismiss("fallback-questions-loading")
+        toast.error("Unable to start assessment", {
+          description: "Please try again in a moment or contact support if the issue persists.",
+          duration: 5000
+        })
+      }
+    } finally {
+      setIsStartingInterview(false)
+    }
   }
 
-  const handleSubmitAnswer = () => {
-    if (!currentAnswer.trim()) return
+  const handleSubmitAnswer = async () => {
+    if (!currentAnswer.trim() || isSubmittingAnswer || isTransitioningQuestions) return
+
+    setIsSubmittingAnswer(true)
 
     const timeSpent = timeElapsed
     submitAnswer(currentAnswer, timeSpent)
     setCurrentAnswer("")
     setTimeElapsed(0)
-    nextQuestion()
+
+    // Show transition loading screen
+    setIsTransitioningQuestions(true)
+
+    // Add a small delay for smooth transition effect
+    setTimeout(async () => {
+      try {
+        await nextQuestion()
+      } catch (error) {
+        console.error('Error moving to next question:', error)
+      } finally {
+        setIsSubmittingAnswer(false)
+        setIsTransitioningQuestions(false)
+      }
+    }, 500) // 1 second delay for a nice transition
   }
 
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  // Uses three different colors for each difficulty
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "Easy":
-        // Green = Success = Easy
-        return "bg-green-100 text-green-800 border-green-200"
-      case "Medium":
-        // Yellow = Warning = Medium
-        return "bg-yellow-100 text-yellow-800 border-yellow-200"
-      case "Hard":
-        // Red = Danger = Hard
-        return "bg-red-100 text-red-800 border-red-200"
-      default:
-        // Uses muted for unknown
-        return "bg-muted text-muted-foreground"
-    }
-  }
 
   // If feedback completion is shown, display the completion screen
   if (showFeedbackCompletion) {
+    const completedCandidate = candidates.find(c => c.id === lastCompletedCandidateId)
+
     return (
-      <div className="h-full flex flex-col items-center justify-center p-3 sm:p-4 overflow-hidden">
-        <div className="flex flex-col items-center justify-center space-y-3 sm:space-y-4">
-          <div className="text-center space-y-2 sm:space-y-3">
-            <div className="mx-auto w-10 sm:w-12 h-10 sm:h-12 bg-green-100 rounded-full flex items-center justify-center">
-              <IconCircleCheck className="h-5 sm:h-6 w-5 sm:w-6 text-green-600" />
+      <>
+        <div className="h-full flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="flex-shrink-0 p-3 sm:p-4 pb-2">
+            <div className="text-center space-y-1">
+              <div className="mx-auto w-10 sm:w-12 h-10 sm:h-12 bg-green-100 rounded-full flex items-center justify-center">
+                <IconCircleCheck className="h-5 sm:h-6 w-5 sm:w-6 text-green-600" />
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-foreground">Thank You!</h2>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                Thanks for attending the interview. Your responses have been recorded and will be reviewed by our team.
+              </p>
             </div>
-            <h2 className="text-lg sm:text-xl font-bold text-foreground">Thank You!</h2>
-            <p className="text-xs sm:text-sm text-muted-foreground max-w-sm px-2">
-              Thanks for attending the interview. Your responses have been recorded and will be reviewed by our team.
-            </p>
           </div>
 
-          <Button
-            onClick={returnToHome}
-            size="sm"
-            className="px-4 sm:px-6 cursor-pointer"
-          >
-            Return to Home
-          </Button>
+          {/* Content - Centered */}
+          <div className="flex-1 flex items-center justify-center px-3 sm:px-4">
+            <div className="text-center space-y-4 max-w-sm">
+              <p className="text-sm text-muted-foreground">
+                Your interview has been completed successfully. Click below to view your detailed results.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex-shrink-0 p-3 sm:p-4 pt-2">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 items-center justify-center">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center w-fit">
+                <Button
+                  onClick={() => setShowResultsOverlay(true)}
+                  variant="outline"
+                  size="sm"
+                  className="min-w-[140px] flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium cursor-pointer"
+                  disabled={!completedCandidate}
+                >
+                  View Results
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowResultsOverlay(false)
+                    returnToHome()
+                  }}
+                  size="sm"
+                  className="min-w-[140px] flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium cursor-pointer"
+                >
+                  Return to Home
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+
+        {/* Results Overlay */}
+        {showResultsOverlay && completedCandidate && createPortal(
+          <div
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowResultsOverlay(false)}
+          >
+            <div
+              className="bg-background rounded-lg shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col border-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex-shrink-0 p-4 border-b flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg sm:text-xl font-semibold">Interview Results</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {completedCandidate.name} - Detailed Evaluation
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowResultsOverlay(false)}
+                  className="p-2"
+                >
+                  <IconX size={16} />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="space-y-4 sm:space-y-6">
+                  {/* Interview Summary */}
+                  <div className="space-y-3 sm:space-y-4">
+                    {/* Candidate Info */}
+                    <div className="border rounded-lg p-3 sm:p-4 bg-muted/30">
+                      <h4 className="text-sm sm:text-base font-semibold mb-2">Profile Information</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+                        <div><strong>Name:</strong> {completedCandidate.name}</div>
+                        <div><strong>Email:</strong> {completedCandidate.email}</div>
+                        <div><strong>Phone:</strong> {completedCandidate.phone}</div>
+                         </div>
+                    </div>
+
+                    {/* Score Display */}
+                    {completedCandidate.finalScore !== undefined && (
+                      <div className="border rounded-lg p-3 sm:p-4 text-center bg-gradient-to-r from-primary/5 to-primary/10">
+                        <div className="text-3xl sm:text-4xl font-bold text-primary mb-1">
+                          {completedCandidate.finalScore}/100
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Your Interview Score
+                        </p>
+                      </div>
+                    )}
+
+                    {/* AI Evaluation */}
+                    {completedCandidate.aiEvaluation && (
+                      <div className="border rounded-lg p-3 sm:p-4 space-y-3">
+                        <h4 className="text-sm sm:text-base font-semibold">AI Evaluation</h4>
+
+                        {/* Summary */}
+                        <div>
+                          <p className="text-sm leading-relaxed">{completedCandidate.aiEvaluation.summary}</p>
+                        </div>
+
+                        {/* Strengths */}
+                        {completedCandidate.aiEvaluation.strengths && completedCandidate.aiEvaluation.strengths.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-green-700 mb-2">Strengths:</h5>
+                            <ul className="text-sm space-y-1 ml-2">
+                              {completedCandidate.aiEvaluation.strengths.map((strength, index) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="text-green-600 mr-2">•</span>
+                                  {strength}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Weaknesses */}
+                        {completedCandidate.aiEvaluation.weaknesses && completedCandidate.aiEvaluation.weaknesses.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-orange-700 mb-2">Areas for Improvement:</h5>
+                            <ul className="text-sm space-y-1 ml-2">
+                              {completedCandidate.aiEvaluation.weaknesses.map((weakness, index) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="text-orange-600 mr-2">•</span>
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Recommendations */}
+                        {completedCandidate.aiEvaluation.recommendations && completedCandidate.aiEvaluation.recommendations.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-blue-700 mb-2">Recommendations:</h5>
+                            <ul className="text-sm space-y-1 ml-2">
+                              {completedCandidate.aiEvaluation.recommendations.map((rec, index) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="text-blue-600 mr-2">•</span>
+                                  {rec}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Fallback Summary */}
+                    {!completedCandidate.aiEvaluation && completedCandidate.aiSummary && (
+                      <div className="border rounded-lg p-3 sm:p-4">
+                        <h4 className="text-sm sm:text-base font-semibold mb-2">Interview Summary</h4>
+                        <div>
+                          <p className="text-sm whitespace-pre-line leading-relaxed">{completedCandidate.aiSummary}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+      </>
     )
   }
+
 
   // Welcome Back Screen
   if (showWelcomeBackModal && unfinishedSession) {
@@ -364,21 +666,90 @@ export function IntervieweeTab() {
 
           <div className="flex flex-col sm:flex-row gap-2">
             <Button
-              onClick={handleResumeInterview}
+              onClick={() => handleResumeInterview()}
               size="sm"
+              disabled={isStartingInterview}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium cursor-pointer"
             >
-              <IconPlayerPlay className="h-4 w-4" />
-              Resume Interview
+              {isStartingInterview ? (
+                <>
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary mr-1"></div>
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <IconPlayerPlay className="h-4 w-4" />
+                  Resume Interview
+                </>
+              )}
             </Button>
             <Button
               variant="outline"
               onClick={handleStartNew}
               size="sm"
+              disabled={isStartingInterview}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium cursor-pointer"
             >
-              Start New Interview
+              {isStartingInterview ? (
+                <>
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary mr-1"></div>
+                  Loading...
+                </>
+              ) : (
+                "Start New Interview"
+              )}
             </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show loading transition between questions
+  if (isTransitioningQuestions) {
+    const mostRecentCandidate = candidates[candidates.length - 1]
+    const displayCandidate = mostRecentCandidate || currentCandidate
+
+    return (
+      <div className="h-full flex flex-col overflow-hidden">
+        {/* Header - Fixed height */}
+        <div className="flex-shrink-0 p-3 sm:p-4 pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-1 sm:space-y-0">
+            <div>
+              <h2 className="text-sm sm:text-base font-semibold">AI Interview Assessment</h2>
+            </div>
+            <div className="flex flex-row sm:flex-row items-start sm:items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+              <span className="truncate">
+                {displayCandidate?.name
+                  ?.split(' ')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ')}
+              </span>
+              <span>•</span>
+              <span className="truncate">{displayCandidate?.email}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Content - Centered Loading */}
+        <div className="flex-1 flex items-center justify-center px-3 sm:px-4">
+          <div className="text-center space-y-4 max-w-sm">
+            <div className="mx-auto w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-primary/10 to-primary/20 rounded-full flex items-center justify-center">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-lg sm:text-xl font-semibold text-foreground">Processing Your Answer</h3>
+              <p className="text-sm text-muted-foreground">
+                Analyzing your response and preparing the next question...
+              </p>
+            </div>
+            <div className="flex justify-center">
+              <div className="flex space-x-1">
+                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -432,7 +803,7 @@ export function IntervieweeTab() {
                 <div className="flex items-center gap-1 sm:gap-2">
                   <IconClock className="h-3 sm:h-4 w-3 sm:w-4 text-muted-foreground" />
                   <span className="text-base sm:text-lg font-mono font-semibold">
-                    {formatTime(timeRemaining)}
+                    {formatTime(timeRemaining * 1000)}
                   </span>
                 </div>
               </div>
@@ -445,9 +816,9 @@ export function IntervieweeTab() {
                   value={currentAnswer}
                   onChange={(e) => setCurrentAnswer(e.target.value)}
                   placeholder="Type your answer here..."
-                  rows={18}
-                  className="min-h-[400px] sm:min-h-[800px] resize-y text-xs sm:text-sm border border-border/50 focus:border-border/70"
-                  style={{ minHeight: 300, maxHeight: 800, boxShadow: "none", borderWidth: "1px" }}
+                  rows={8}
+                  className="min-h-[100px] sm:min-h-[200px] md:min-h-[240px] max-h-[300px] sm:max-h-[250px] md:max-h-[350px] text-xs sm:text-sm border border-border/50 focus:border-border/70 resize-vertical"
+                  style={{ boxShadow: "none", borderWidth: "1px" }}
                 />
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1">
                   <span className="text-xs text-muted-foreground">
@@ -455,12 +826,12 @@ export function IntervieweeTab() {
                   </span>
                   <Button
                     onClick={handleSubmitAnswer}
-                    disabled={!currentAnswer.trim()}
+                    disabled={!currentAnswer.trim() || isSubmittingAnswer || isTransitioningQuestions}
                     size="sm"
                     className="w-full sm:w-auto cursor-pointer"
                   >
                     <IconSend className="h-3 w-3 mr-1" />
-                    Submit Answer
+                    {isTransitioningQuestions ? "Processing..." : isSubmittingAnswer ? "Submitting..." : "Submit Answer"}
                   </Button>
                 </div>
               </div>
@@ -499,17 +870,19 @@ export function IntervieweeTab() {
               <div className="relative w-full mx-auto">
                 {/* Drop area */}
                 <div
-                  onDragEnter={handleDragEnter}
-                  onDragLeave={handleDragLeave}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
+                  onDragEnter={isProcessingFile || isStartingInterview ? undefined : handleDragEnter}
+                  onDragLeave={isProcessingFile || isStartingInterview ? undefined : handleDragLeave}
+                  onDragOver={isProcessingFile || isStartingInterview ? undefined : handleDragOver}
+                  onDrop={isProcessingFile || isStartingInterview ? undefined : handleDrop}
                   data-dragging={isDragging || undefined}
-                  className="border-input hover:bg-accent/40 data-[dragging=true]:bg-accent/40 has-[input:focus]:border-ring has-[input:focus]:ring-ring/50 has-disabled:pointer-events-none has-disabled:opacity-50 has-[img]:border-none has-[input:focus]:ring-[3px] relative flex min-h-48 sm:min-h-64 flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed p-2 sm:p-3 transition-colors"
+                  data-processing={(isProcessingFile || isStartingInterview) || undefined}
+                  className="border-input hover:bg-accent/40 data-[dragging=true]:bg-accent/40 data-[processing=true]:bg-muted/50 data-[processing=true]:cursor-not-allowed has-[input:focus]:border-ring has-[input:focus]:ring-ring/50 has-disabled:pointer-events-none has-disabled:opacity-50 has-[img]:border-none has-[input:focus]:ring-[3px] relative flex min-h-48 sm:min-h-64 flex-col items-center justify-center overflow-hidden rounded-xl border border-dashed p-2 sm:p-3 transition-colors"
                 >
                   <input
                     {...getInputProps()}
                     className="sr-only"
                     aria-label="Upload resume"
+                    disabled={isProcessingFile || isStartingInterview}
                   />
                   {resumeFile ? (
                     <div className="flex flex-col items-center justify-center px-3 sm:px-4 py-2 text-center">
@@ -542,10 +915,15 @@ export function IntervieweeTab() {
                       </p>
                       <button
                         type="button"
-                        className="mt-2 px-3 py-1.5 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors cursor-pointer"
-                        onClick={openFileDialog}
+                        className={`mt-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                          isProcessingFile || isStartingInterview
+                            ? "bg-muted text-muted-foreground cursor-not-allowed"
+                            : "bg-primary text-white hover:bg-primary/90"
+                        }`}
+                        onClick={isProcessingFile || isStartingInterview ? undefined : openFileDialog}
+                        disabled={isProcessingFile || isStartingInterview}
                       >
-                        Choose File
+                        {isProcessingFile ? "Processing..." : isStartingInterview ? "Preparing..." : "Choose File"}
                       </button>
                     </div>
                   )}
@@ -554,8 +932,13 @@ export function IntervieweeTab() {
                   <div className="absolute top-4 right-4">
                     <button
                       type="button"
-                      className="focus-visible:border-ring focus-visible:ring-ring/50 z-50 flex size-8 items-center justify-center rounded-full bg-black/60 text-white transition-[color,box-shadow] outline-none hover:bg-black/80 focus-visible:ring-[3px] cursor-pointer"
-                      onClick={handleRemoveFile}
+                      className={`focus-visible:border-ring focus-visible:ring-ring/50 z-50 flex size-8 items-center justify-center rounded-full text-white transition-[color,box-shadow] outline-none focus-visible:ring-[3px] ${
+                        isProcessingFile || isStartingInterview
+                          ? "bg-muted cursor-not-allowed opacity-50"
+                          : "bg-black/60 hover:bg-black/80 cursor-pointer"
+                      }`}
+                      onClick={isProcessingFile || isStartingInterview ? undefined : handleRemoveFile}
+                      disabled={isProcessingFile || isStartingInterview}
                       aria-label="Remove resume"
                     >
                       <IconX className="size-4" aria-hidden="true" />
@@ -617,7 +1000,17 @@ export function IntervieweeTab() {
                           setMissingFields(newMissing)
                         }}
                         placeholder={`Enter your ${fieldLabels[field].toLowerCase()}`}
-                        className={`text-xs sm:text-sm h-7 sm:h-8 border border-[1px] ${fieldStatus.status === 'extracted' ? 'border-green-200 bg-green-50' : fieldStatus.status === 'collected' ? 'border-blue-200 bg-blue-50' : 'border-red-200 bg-red-50'}`}
+                        disabled={isProcessingFile || isStartingInterview}
+                        className={`text-xs sm:text-sm h-7 sm:h-8 border-1 ${
+                          isProcessingFile || isStartingInterview
+                            ? 'opacity-50 cursor-not-allowed'
+                            : fieldStatus.status === 'extracted'
+                            ? 'border-green-200 bg-green-50'
+                            : fieldStatus.status === 'collected'
+                            ? 'border-blue-200 bg-blue-50'
+                            : 'border-red-200 bg-red-50'
+                        }`}
+                        readOnly={isProcessingFile || isStartingInterview}
                         style={{ boxShadow: "none", borderWidth: "1px" }}
                       />
                       <div className="flex items-center gap-1">
@@ -640,16 +1033,29 @@ export function IntervieweeTab() {
 
           <div className="flex justify-center mt-auto pt-3">
             <Button
-              disabled={!canStartInterview || isInterviewActive}
+              disabled={!canStartInterview || isInterviewActive || isStartingInterview || isProcessingFile}
               onClick={handleStartInterview}
               size="sm"
               className="px-4 sm:px-6 text-xs sm:text-sm cursor-pointer w-full sm:w-auto"
             >
-              {isInterviewActive ? "Assessment in Progress" : "Begin Assessment"}
+              {isStartingInterview ? (
+                <>
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                  Preparing Assessment...
+                </>
+              ) : isInterviewActive ? (
+                "Assessment in Progress"
+              ) : isProcessingFile ? (
+                "Processing Resume..."
+              ) : (
+                "Begin Assessment"
+              )}
             </Button>
           </div>
         </div>
       </div>
     </div>
   )
-}
+})
+
+IntervieweeTab.displayName = 'IntervieweeTab'

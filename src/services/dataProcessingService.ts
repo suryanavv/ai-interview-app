@@ -31,7 +31,7 @@ export class DataProcessingService {
       const line = lines[i].trim()
       if (line.length > 2 && line.length < 50 && !line.includes('@') && !line.match(phoneRegex)) {
         // Check if it looks like a name (contains letters and possibly spaces)
-        if (/^[A-Za-z\s\.]+$/.test(line)) {
+        if (/^[A-Za-z\s.]+$/.test(line)) {
           name = line
           break
         }

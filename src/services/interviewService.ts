@@ -1,3 +1,5 @@
+import { toast } from "sonner"
+
 export interface Candidate {
   id: string
   name: string
@@ -15,9 +17,12 @@ export interface Candidate {
   answers: Answer[]
   finalScore?: number
   aiSummary?: string
+  aiEvaluation?: AIEvaluation
   startTime?: Date
   endTime?: Date
   totalTime?: number
+  aiQuestions?: Question[] // Store AI-generated questions for this candidate
+  aiSessionId?: string // Store AI chat session ID for evaluation
 }
 
 export interface Answer {
@@ -38,11 +43,95 @@ export interface Question {
   category: string
 }
 
+export interface AIEvaluation {
+  score: number
+  summary: string
+  feedback: string
+  strengths: string[]
+  weaknesses: string[]
+  recommendations: string[]
+}
+
+import { AIService } from './aiService'
+import { Config } from '@/lib/config'
+
 export class InterviewService {
+  private static withTimeout<T>(promise: Promise<T>, ms: number = Config.getAIConfig().timeout, onTimeout?: () => void): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        onTimeout?.()
+        reject(new Error('timeout'))
+      }, ms)
+      promise
+        .then((value) => {
+          clearTimeout(timer)
+          resolve(value)
+        })
+        .catch((err) => {
+          clearTimeout(timer)
+          reject(err)
+        })
+    })
+  }
   /**
-   * Generate the standard set of interview questions
+   * Generate AI-personalized questions based on resume text and return session info
+   * Falls back to standard questions if AI fails or no resume text provided
    */
-  static generateQuestions(): Question[] {
+  static async generateQuestionsWithSession(resumeText?: string): Promise<{ questions: Question[], sessionId?: string }> {
+    if (resumeText && AIService.isConfigured()) {
+      try {
+        const { sessionId, questions: aiQuestions } = await this.withTimeout(
+          AIService.createChatSession(resumeText),
+          20000,
+          () => {
+            toast.warning("AI timed out", {
+              description: "Personalized questions took too long. Falling back to standard questions.",
+              duration: 4000
+            })
+          }
+        )
+        const questions = aiQuestions.map(q => ({
+          id: q.id,
+          text: q.text,
+          difficulty: q.difficulty,
+          timeLimit: q.timeLimit,
+          category: q.category
+        }))
+        return { questions, sessionId }
+      } catch (error) {
+        console.error('Failed to generate AI personalized questions, falling back to standard questions:', error)
+        toast.error("AI Service Error", {
+          description: "Unable to generate personalized questions. Using standard interview questions instead.",
+          duration: 5000
+        })
+        // Fall back to standard questions if AI fails
+      }
+    } else if (resumeText && !AIService.isConfigured()) {
+      // Show toast when API key is not configured
+      toast.warning("AI Service Unavailable", {
+        description: "OpenRouter API key not configured. Using standard interview questions for mock assessment.",
+        duration: 5000
+      })
+    }
+
+    // Fallback to standard questions
+    return { questions: this.generateStandardQuestions() }
+  }
+
+  /**
+   * Generate AI-personalized questions based on resume text
+   * Falls back to standard questions if AI fails or no resume text provided
+   * @deprecated Use generateQuestionsWithSession for new implementations
+   */
+  static async generateQuestions(resumeText?: string): Promise<Question[]> {
+    const { questions } = await this.generateQuestionsWithSession(resumeText)
+    return questions
+  }
+
+  /**
+   * Generate the standard set of interview questions (fallback)
+   */
+  static generateStandardQuestions(): Question[] {
     return [
       // Easy Questions (2) - 20 seconds each
       { id: '1', text: 'What is React and what are its main advantages for building user interfaces?', difficulty: 'Easy', timeLimit: 20, category: 'React' },
@@ -64,45 +153,215 @@ export class InterviewService {
   static calculateFinalScore(answers: Answer[], questions: Question[]): number {
     if (answers.length === 0) return 0
 
-    let totalScore = 0
-    let totalWeight = 0
+    // Deduplicate answers by questionId to ensure each question is only scored once
+    const answerMap = new Map<string, Answer>()
+    answers.forEach(answer => {
+      if (!answerMap.has(answer.questionId)) {
+        answerMap.set(answer.questionId, answer)
+      }
+    })
 
-    answers.forEach((answer, index) => {
+    // Get unique answers and sort by question ID to maintain order
+    const uniqueAnswers = Array.from(answerMap.values())
+      .sort((a, b) => a.questionId.localeCompare(b.questionId))
+      .slice(0, 6) // Limit to first 6 questions
+
+    let totalScore = 0
+    let maxPossibleScore = 0
+
+    uniqueAnswers.forEach((answer, index) => {
       const question = questions[index]
       if (!question) return
 
-      // Weight questions by difficulty
-      const weight = question.difficulty === 'Easy' ? 1 : question.difficulty === 'Medium' ? 2 : 3
-      totalWeight += weight
+      // Maximum score per question based on difficulty
+      const maxScorePerQuestion = question.difficulty === 'Easy' ? 20 : question.difficulty === 'Medium' ? 30 : 50
+      maxPossibleScore += maxScorePerQuestion
 
-      // Simple scoring based on answer length and content
-      let score = 0
+      // Calculate score based on answer quality
+      let questionScore = 0
+
       if (answer.answer.trim().length > 0) {
-        score = Math.min(10, Math.floor(answer.answer.length / 10)) // Basic length-based scoring
+        const answerLength = answer.answer.length
 
-        // Bonus for longer, more detailed answers
-        if (answer.answer.length > 50) score += 2
-        if (answer.answer.length > 100) score += 3
-        if (answer.answer.length > 200) score += 5
+        // Base score based on answer length (0-10 points)
+        if (answerLength >= 10) questionScore += 2
+        if (answerLength >= 50) questionScore += 3
+        if (answerLength >= 100) questionScore += 3
+        if (answerLength >= 200) questionScore += 2
 
-        // Bonus for technical keywords
-        const technicalKeywords = ['react', 'node', 'javascript', 'api', 'database', 'component', 'state', 'props', 'async', 'promise', 'websocket', 'scalable', 'architecture']
-        const keywordCount = technicalKeywords.filter(keyword =>
-          answer.answer.toLowerCase().includes(keyword)
+        // Technical content scoring (0-10 points)
+        const technicalKeywords = this.getTechnicalKeywordsForCategory(question.category)
+        const keywordMatches = technicalKeywords.filter(keyword =>
+          answer.answer.toLowerCase().includes(keyword.toLowerCase())
         ).length
-        score += keywordCount
+
+        if (keywordMatches > 0) questionScore += Math.min(5, keywordMatches)
+        if (keywordMatches >= 3) questionScore += 5
+
+        // Time management bonus/penalty (0-5 points)
+        const timeRatio = answer.timeSpent / question.timeLimit
+        if (timeRatio >= 0.8) questionScore += 3 // Used most of allocated time
+        else if (timeRatio >= 0.5) questionScore += 1 // Reasonable time usage
+        else if (timeRatio < 0.2) questionScore -= 2 // Too rushed
       }
 
-      totalScore += score * weight
+      // Ensure score doesn't exceed maximum for this question
+      questionScore = Math.max(0, Math.min(maxScorePerQuestion, questionScore))
+      totalScore += questionScore
     })
 
-    return totalWeight > 0 ? Math.round((totalScore / totalWeight) * 10) : 0
+    // Convert to percentage out of 100
+    const finalScore = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0
+    return Math.min(100, Math.max(0, finalScore))
   }
 
   /**
-   * Generate AI summary based on candidate performance
+   * Get relevant technical keywords for a given question category
    */
-  static generateAISummary(candidate: Candidate, questions: Question[], finalScore: number): string {
+  static getTechnicalKeywordsForCategory(category: string): string[] {
+    const keywordMap: Record<string, string[]> = {
+      'React': ['react', 'component', 'state', 'props', 'hooks', 'jsx', 'virtual dom', 'lifecycle'],
+      'Node.js': ['node', 'express', 'npm', 'server', 'backend', 'api', 'middleware', 'async'],
+      'JavaScript': ['javascript', 'es6', 'typescript', 'function', 'variable', 'object', 'array', 'promise'],
+      'Database': ['mongodb', 'sql', 'nosql', 'schema', 'query', 'index', 'aggregation', 'orm'],
+      'System Design': ['architecture', 'scalability', 'microservices', 'api', 'load balancing', 'caching', 'performance'],
+      'Full Stack': ['frontend', 'backend', 'database', 'api', 'deployment', 'docker', 'aws', 'cloud'],
+      'Authentication': ['jwt', 'oauth', 'session', 'token', 'security', 'encryption', 'bcrypt', 'passport'],
+      'API': ['rest', 'graphql', 'endpoint', 'http', 'json', 'cors', 'middleware', 'routing'],
+      'Performance': ['optimization', 'caching', 'lazy loading', 'bundle', 'compression', 'cdn', 'indexing'],
+      'Testing': ['unit test', 'integration', 'jest', 'mocha', 'cypress', 'tdd', 'coverage']
+    }
+
+    // Find matching category (case-insensitive partial match)
+    for (const [key, keywords] of Object.entries(keywordMap)) {
+      if (category.toLowerCase().includes(key.toLowerCase())) {
+        return keywords
+      }
+    }
+
+    // Default technical keywords
+    return ['react', 'node', 'javascript', 'api', 'database', 'component', 'state', 'props', 'async', 'promise']
+  }
+
+  /**
+   * Generate AI evaluation and summary based on candidate performance
+   */
+  static async generateAISummary(candidate: Candidate, questions: Question[]): Promise<{ summary: string; evaluation: AIEvaluation | null }> {
+    if (!candidate.extractedData?.rawText || !AIService.isConfigured()) {
+      // Fall back to basic summary if no AI available
+      if (!AIService.isConfigured()) {
+        toast.warning("AI Evaluation Unavailable", {
+          description: "OpenRouter API key not configured. Using basic scoring for assessment.",
+          duration: 5000
+        })
+      }
+      const fallbackScore = this.calculateFinalScore(candidate.answers, questions)
+      return this.generateBasicSummary(candidate, questions, fallbackScore)
+    }
+
+    try {
+      // Deduplicate answers by questionId and limit to first 6 questions
+      const answerMap = new Map<string, Answer>()
+      candidate.answers.forEach(answer => {
+        if (!answerMap.has(answer.questionId)) {
+          answerMap.set(answer.questionId, answer)
+        }
+      })
+
+      // Get unique answers and sort by question ID to maintain order
+      const uniqueAnswers = Array.from(answerMap.values())
+        .sort((a, b) => a.questionId.localeCompare(b.questionId))
+        .slice(0, 6)
+
+      const answersForAI = uniqueAnswers.map(answer => ({
+        questionId: answer.questionId,
+        question: answer.question,
+        answer: answer.answer,
+        timeSpent: answer.timeSpent,
+        difficulty: answer.difficulty
+      }))
+
+      let aiEvaluation;
+
+      // Use existing chat session if available, otherwise use fallback evaluation for resumed sessions
+      if (candidate.aiSessionId && AIService.getSessionInfo(candidate.aiSessionId)?.exists) {
+        aiEvaluation = await this.withTimeout(
+          AIService.evaluateInterviewWithSession(
+            candidate.aiSessionId,
+            answersForAI
+          ),
+          20000,
+          () => {
+            toast.warning("AI Evaluation Timed Out", {
+              description: "Falling back to basic scoring and summary.",
+              duration: 4000
+            })
+          }
+        )
+      } else {
+        aiEvaluation = await this.withTimeout(
+          AIService.evaluateInterviewForResumedSession(
+            candidate.extractedData.rawText,
+            questions,
+            answersForAI
+          ),
+          20000,
+          () => {
+            toast.warning("AI Evaluation Timed Out", {
+              description: "Falling back to basic scoring and summary.",
+              duration: 4000
+            })
+          }
+        )
+      }
+
+      // Create AI evaluation object with AI-generated score
+      const evaluationData = {
+        score: aiEvaluation.score,
+        summary: aiEvaluation.summary,
+        feedback: '',
+        strengths: aiEvaluation.strengths,
+        weaknesses: aiEvaluation.weaknesses,
+        recommendations: aiEvaluation.recommendations
+      }
+
+      // Format the comprehensive AI evaluation into a summary string
+      let summary = `Interview completed for ${candidate.name}.\n\n`
+      summary += `AI Evaluation Score: ${aiEvaluation.score}/100\n\n`
+      summary += `Summary:\n${aiEvaluation.summary}\n\n`
+
+      if (aiEvaluation.strengths && aiEvaluation.strengths.length > 0) {
+        summary += `Strengths:\n${aiEvaluation.strengths.map(strength => `• ${strength}`).join('\n')}\n\n`
+      }
+
+      if (aiEvaluation.weaknesses && aiEvaluation.weaknesses.length > 0) {
+        summary += `Areas for Improvement:\n${aiEvaluation.weaknesses.map(weakness => `• ${weakness}`).join('\n')}\n\n`
+      }
+
+      if (aiEvaluation.recommendations && aiEvaluation.recommendations.length > 0) {
+        summary += `Recommendations:\n${aiEvaluation.recommendations.map(rec => `• ${rec}`).join('\n')}\n\n`
+      }
+
+      return {
+        summary,
+        evaluation: evaluationData
+      }
+
+    } catch (error) {
+      console.error('Failed to generate AI summary, falling back to basic summary:', error)
+      toast.error("AI Evaluation Error", {
+        description: "Unable to generate AI-powered evaluation. Using basic scoring instead.",
+        duration: 5000
+      })
+      const fallbackScore = this.calculateFinalScore(candidate.answers, questions)
+      return this.generateBasicSummary(candidate, questions, fallbackScore)
+    }
+  }
+
+  /**
+   * Generate basic summary (fallback when AI is not available)
+   */
+  static generateBasicSummary(candidate: Candidate, questions: Question[], finalScore: number): { summary: string; evaluation: AIEvaluation | null } {
     const totalQuestions = questions.length
     const answeredQuestions = candidate.answers.length
     const completionRate = Math.round((answeredQuestions / totalQuestions) * 100)
@@ -147,6 +406,9 @@ export class InterviewService {
 
     summary += `\n\nRecommendation: ${finalScore >= 70 ? 'Strong candidate for the full-stack developer position.' : finalScore >= 50 ? 'Consider for the position with additional training.' : finalScore === 0 ? 'Interview abandoned - candidate did not complete the assessment.' : 'Not recommended for the position at this time.'}`
 
-    return summary
+    return {
+      summary,
+      evaluation: null
+    }
   }
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useId, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -26,7 +27,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 
-import { cn } from "@/lib/utils"
+import { cn, formatTime, getDifficultyColor } from "@/lib/utils"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,22 +84,6 @@ const statusFilterFn: FilterFn<Candidate> = (
   return filterValue.includes(status)
 }
 
-const getDifficultyColor = (difficulty: string) => {
-  switch (difficulty) {
-    case "Easy":
-      // Green = Success = Easy
-      return "bg-green-100 text-green-800 border-green-200"
-    case "Medium":
-      // Yellow = Warning = Medium
-      return "bg-yellow-100 text-yellow-800 border-yellow-200"
-    case "Hard":
-      // Red = Danger = Hard
-      return "bg-red-100 text-red-800 border-red-200"
-    default:
-      // Uses muted for unknown
-      return "bg-muted text-muted-foreground"
-  }
-}
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -107,13 +92,6 @@ const getStatusColor = (status: string) => {
     case "paused": return "bg-muted text-muted-foreground"
     default: return "bg-muted text-muted-foreground"
   }
-}
-
-const formatTime = (milliseconds: number) => {
-  const seconds = Math.floor(milliseconds / 1000)
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
 
@@ -139,7 +117,7 @@ export function InterviewerTab() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc")
   const [sortingEnabled, setSortingEnabled] = useState<boolean>(true)
 
-  const { candidates, deleteCandidate, addCandidate, updateCandidate } = useInterviewStore()
+  const { candidates, deleteCandidate } = useInterviewStore()
 
   const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null)
 
@@ -244,61 +222,6 @@ export function InterviewerTab() {
     },
   ]
 
-  // Add dummy candidates if none exist
-  useEffect(() => {
-    if (candidates.length === 0) {
-      const dummyCandidates = [
-        { name: "John Smith", email: "john.smith@email.com", phone: "+1-555-0101", interviewStatus: "completed", finalScore: 85 },
-        { name: "Sarah Johnson", email: "sarah.johnson@email.com", phone: "+1-555-0102", interviewStatus: "completed", finalScore: 92 },
-        { name: "Michael Brown", email: "michael.brown@email.com", phone: "+1-555-0103", interviewStatus: "completed", finalScore: 78 },
-        { name: "Emily Davis", email: "emily.davis@email.com", phone: "+1-555-0104", interviewStatus: "in_progress", finalScore: undefined },
-        { name: "David Wilson", email: "david.wilson@email.com", phone: "+1-555-0105", interviewStatus: "completed", finalScore: 88 },
-        { name: "Lisa Anderson", email: "lisa.anderson@email.com", phone: "+1-555-0106", interviewStatus: "completed", finalScore: 76 },
-        { name: "Robert Taylor", email: "robert.taylor@email.com", phone: "+1-555-0107", interviewStatus: "completed", finalScore: 91 },
-        { name: "Jennifer Martinez", email: "jennifer.martinez@email.com", phone: "+1-555-0108", interviewStatus: "not_started", finalScore: undefined },
-        { name: "James Garcia", email: "james.garcia@email.com", phone: "+1-555-0109", interviewStatus: "completed", finalScore: 83 },
-        { name: "Maria Rodriguez", email: "maria.rodriguez@email.com", phone: "+1-555-0110", interviewStatus: "completed", finalScore: 89 },
-        { name: "Christopher Lee", email: "christopher.lee@email.com", phone: "+1-555-0111", interviewStatus: "completed", finalScore: 74 },
-        { name: "Amanda White", email: "amanda.white@email.com", phone: "+1-555-0112", interviewStatus: "in_progress", finalScore: undefined },
-        { name: "Daniel Harris", email: "daniel.harris@email.com", phone: "+1-555-0113", interviewStatus: "completed", finalScore: 87 },
-        { name: "Jessica Clark", email: "jessica.clark@email.com", phone: "+1-555-0114", interviewStatus: "completed", finalScore: 82 },
-        { name: "Matthew Lewis", email: "matthew.lewis@email.com", phone: "+1-555-0115", interviewStatus: "not_started", finalScore: undefined },
-      ]
-
-      dummyCandidates.forEach((candidate, index) => {
-        // Add basic candidate info first
-        const candidateId = addCandidate({
-          name: candidate.name,
-          email: candidate.email,
-          phone: candidate.phone,
-        })
-
-        // Then update with additional properties
-        const startTime = new Date(Date.now() - (index * 24 * 60 * 60 * 1000)) // Spread over last 15 days
-        const totalTime = candidate.interviewStatus === "completed" ? Math.floor(Math.random() * 1800) + 600 : undefined // 10-40 minutes
-
-        const updates: any = {
-          interviewStatus: candidate.interviewStatus,
-          currentQuestionIndex: candidate.interviewStatus === "completed" ? 6 : candidate.interviewStatus === "in_progress" ? Math.floor(Math.random() * 6) : 0,
-        }
-
-        if (candidate.finalScore !== undefined) {
-          updates.finalScore = candidate.finalScore
-        }
-
-        if (candidate.interviewStatus !== "not_started") {
-          updates.startTime = startTime
-        }
-
-        if (totalTime !== undefined) {
-          updates.totalTime = totalTime
-        }
-
-        // Use updateCandidate to set the additional properties
-        updateCandidate(candidateId, updates)
-      })
-    }
-  }, [candidates.length, addCandidate])
 
   // Sync sorting state with selected field and direction
   useEffect(() => {
@@ -372,19 +295,19 @@ export function InterviewerTab() {
     const values = Array.from(statusColumn.getFacetedUniqueValues().keys())
 
     return values.sort()
-  }, [table.getColumn("interviewStatus")?.getFacetedUniqueValues()])
+  }, [table])
 
   // Get counts for each status
   const statusCounts = useMemo(() => {
     const statusColumn = table.getColumn("interviewStatus")
     if (!statusColumn) return new Map()
     return statusColumn.getFacetedUniqueValues()
-  }, [table.getColumn("interviewStatus")?.getFacetedUniqueValues()])
+  }, [table])
 
   const selectedStatuses = useMemo(() => {
     const filterValue = table.getColumn("interviewStatus")?.getFilterValue() as string[]
     return filterValue ?? []
-  }, [table.getColumn("interviewStatus")?.getFilterValue()])
+  }, [table])
 
   const handleStatusChange = (checked: boolean, value: string) => {
     const filterValue = table.getColumn("interviewStatus")?.getFilterValue() as string[]
@@ -711,108 +634,171 @@ export function InterviewerTab() {
           </div>
       </div>
 
-      {/* Details Overlay */}
-      {selectedCandidate && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 pb-8"
-          onClick={closeDetails}
-        >
-          <div 
-            className="bg-background rounded-lg shadow-lg max-w-4xl w-full max-h-full overflow-hidden flex flex-col border-2"
-            onClick={(e) => e.stopPropagation()}
+        {/* Results Overlay */}
+        {selectedCandidate && createPortal(
+          <div
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            onClick={closeDetails}
           >
-            <div className="flex-shrink-0 p-3 border-b flex justify-between items-center">
-              <div>
-                <h3 className="text-base sm:text-lg font-semibold">{selectedCandidate.name} - Interview Details</h3>
-                <p className="text-xs sm:text-sm text-muted-foreground">
-                {selectedCandidate.email}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={closeDetails}
-                className="p-0"
-              >
-                <IconX size={16} />
-              </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-4 space-y-4">
-                {/* Candidate Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="border rounded p-3">
-                    <h4 className="font-medium mb-1 text-sm">Contact Information</h4>
-                    <div className="space-y-1 text-xs">
-                      <p><strong>Name:</strong> {selectedCandidate.name}</p>
-                      <p><strong>Email:</strong> {selectedCandidate.email}</p>
-                      <p><strong>Phone:</strong> {selectedCandidate.phone}</p>
-                    </div>
-                  </div>
-                  <div className="border rounded p-3">
-                    <h4 className="font-medium mb-1 text-sm">Interview Summary</h4>
-                    <div className="space-y-1 text-xs">
-                      <p><strong>Status:</strong> {selectedCandidate.interviewStatus.replace('_', ' ')}</p>
-                      <p><strong>Score:</strong> {selectedCandidate.finalScore || 'Pending'}/100</p>
-                      <p><strong>Duration:</strong> {selectedCandidate.totalTime ? formatTime(selectedCandidate.totalTime) : 'N/A'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Questions and Answers */}
+            <div
+              className="bg-background rounded-lg shadow-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col border-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex-shrink-0 p-4 border-b flex justify-between items-center">
                 <div>
-                  <h4 className="font-medium mb-2 text-sm">Interview Questions & Answers</h4>
-                  <div className="space-y-2">
-                    {selectedCandidate.answers && selectedCandidate.answers.length > 0 ? (
-                      selectedCandidate.answers.map((answer, index) => (
-                        <div key={answer.questionId} className="border rounded p-3">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center space-x-1">
-                            <span className="text-xs text-muted-foreground">Question {index + 1}</span>
-                              <Badge className={`text-xs px-1.5 py-0.5 ${getDifficultyColor(answer.difficulty)}`}>
-                                {answer.difficulty}
-                              </Badge>
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Time: {formatTime(answer.timeSpent * 1000)}
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <div>
-                              <strong className="text-xs">Question:</strong>
-                              <p className="text-xs mt-1">{answer.question}</p>
-                            </div>
-                            <div>
-                              <strong className="text-xs">Answer:</strong>
-                              <p className="text-xs mt-1 bg-muted p-2 rounded">
-                                {answer.answer}
-                              </p>
-                            </div>
-                          </div>
+                  <h3 className="text-lg sm:text-xl font-semibold">Interview Results</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedCandidate.name} - Detailed Evaluation
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={closeDetails}
+                  className="p-2"
+                >
+                  <IconX size={16} />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="space-y-4 sm:space-y-6">
+                  {/* Interview Summary */}
+                  <div className="space-y-3 sm:space-y-4">
+                    {/* Candidate Info */}
+                    <div className="border rounded-lg p-3 sm:p-4 bg-muted/30">
+                      <h4 className="text-sm sm:text-base font-semibold mb-2">Profile Information</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+                        <div><strong>Name:</strong> {selectedCandidate.name}</div>
+                        <div><strong>Email:</strong> {selectedCandidate.email}</div>
+                        <div><strong>Phone:</strong> {selectedCandidate.phone}</div>
+                      </div>
+                    </div>
+
+                    {/* Score Display */}
+                    {selectedCandidate.finalScore !== undefined && (
+                      <div className="border rounded-lg p-3 sm:p-4 text-center bg-gradient-to-r from-primary/5 to-primary/10">
+                        <div className="text-3xl sm:text-4xl font-bold text-primary mb-1">
+                          {selectedCandidate.finalScore}/100
                         </div>
-                      ))
-                    ) : (
-                      <div className="border rounded p-4 text-center text-sm text-muted-foreground">
-                        No questions available
+                        <p className="text-sm text-muted-foreground">
+                          Your Interview Score
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Questions and Answers */}
+                    <div className="border rounded-lg p-3 sm:p-4">
+                      <h4 className="text-sm sm:text-base font-semibold mb-3">Interview Questions & Answers</h4>
+                      <div className="space-y-3">
+                        {selectedCandidate.answers && selectedCandidate.answers.length > 0 ? (
+                          selectedCandidate.answers.map((answer, index) => (
+                            <div key={answer.questionId} className="border rounded-lg p-3 bg-muted/20">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center space-x-2">
+                                  <span className="text-xs text-muted-foreground font-medium">Question {index + 1}</span>
+                                  <Badge className={`text-xs px-1.5 py-0.5 ${getDifficultyColor(answer.difficulty)}`}>
+                                    {answer.difficulty}
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Time: {formatTime(answer.timeSpent * 1000)}
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <div>
+                                  <strong className="text-xs font-medium">Question:</strong>
+                                  <p className="text-sm mt-1 leading-relaxed">{answer.question}</p>
+                                </div>
+                                <div>
+                                  <strong className="text-xs font-medium">Answer:</strong>
+                                  <div className="bg-background border rounded-md p-3 mt-1">
+                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{answer.answer}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="border rounded-lg p-4 text-center text-sm text-muted-foreground bg-muted/20">
+                            No questions available
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* AI Evaluation */}
+                    {selectedCandidate.aiEvaluation && (
+                      <div className="border rounded-lg p-3 sm:p-4 space-y-3">
+                        <h4 className="text-sm sm:text-base font-semibold">AI Evaluation</h4>
+
+                        {/* Summary */}
+                        <div>
+                          <p className="text-sm leading-relaxed">{selectedCandidate.aiEvaluation.summary}</p>
+                        </div>
+
+                        {/* Strengths */}
+                        {selectedCandidate.aiEvaluation.strengths && selectedCandidate.aiEvaluation.strengths.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-green-700 mb-2">Strengths:</h5>
+                            <ul className="text-sm space-y-1 ml-2">
+                              {selectedCandidate.aiEvaluation.strengths.map((strength, index) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="text-green-600 mr-2">•</span>
+                                  {strength}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Weaknesses */}
+                        {selectedCandidate.aiEvaluation.weaknesses && selectedCandidate.aiEvaluation.weaknesses.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-orange-700 mb-2">Areas for Improvement:</h5>
+                            <ul className="text-sm space-y-1 ml-2">
+                              {selectedCandidate.aiEvaluation.weaknesses.map((weakness, index) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="text-orange-600 mr-2">•</span>
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Recommendations */}
+                        {selectedCandidate.aiEvaluation.recommendations && selectedCandidate.aiEvaluation.recommendations.length > 0 && (
+                          <div>
+                            <h5 className="text-sm font-medium text-blue-700 mb-2">Recommendations:</h5>
+                            <ul className="text-sm space-y-1 ml-2">
+                              {selectedCandidate.aiEvaluation.recommendations.map((rec, index) => (
+                                <li key={index} className="flex items-start">
+                                  <span className="text-blue-600 mr-2">•</span>
+                                  {rec}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Fallback Summary */}
+                    {!selectedCandidate.aiEvaluation && selectedCandidate.aiSummary && (
+                      <div className="border rounded-lg p-3 sm:p-4">
+                        <h4 className="text-sm sm:text-base font-semibold mb-2">Interview Summary</h4>
+                        <div>
+                          <p className="text-sm whitespace-pre-line leading-relaxed">{selectedCandidate.aiSummary}</p>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-
-                {/* AI Summary */}
-                {selectedCandidate.aiSummary && (
-                  <div className="border rounded p-3">
-                    <h4 className="font-medium mb-1 text-sm">AI Summary</h4>
-                    <div className="bg-accent p-2 rounded">
-                      <p className="text-xs">{selectedCandidate.aiSummary}</p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

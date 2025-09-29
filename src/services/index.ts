@@ -8,6 +8,14 @@ export {
   type MissingFields
 } from './dataProcessingService'
 
+// AI services
+export {
+  AIService
+} from './aiService'
+
+// Interview types
+export type { AIEvaluation } from './interviewService'
+
 // Interview services
 export {
   InterviewService,
