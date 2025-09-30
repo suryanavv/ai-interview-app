@@ -43,16 +43,17 @@ export const IntervieweeTab = memo(() => {
   })
   const [collectedData, setCollectedData] = useState<Partial<ExtractedData>>({})
   const [canStartInterview, setCanStartInterview] = useState(false)
-  const [currentAnswer, setCurrentAnswer] = useState("")
   const [timeElapsed, setTimeElapsed] = useState(0)
   const [isProcessingFile, setIsProcessingFile] = useState(false)
   const [showResultsOverlay, setShowResultsOverlay] = useState(false)
+  const [hasAutoSubmitted, setHasAutoSubmitted] = useState(false)
 
   const {
     currentCandidateId,
     isInterviewActive,
     currentQuestion,
     timeRemaining,
+    currentAnswer,
     candidates,
     addCandidate,
     startInterview,
@@ -76,6 +77,7 @@ export const IntervieweeTab = memo(() => {
     isTransitioningQuestions,
     setIsTransitioningQuestions,
     startQuestionTimer,
+    setCurrentAnswer,
   } = useInterviewStore()
 
 
@@ -182,7 +184,7 @@ export const IntervieweeTab = memo(() => {
       const currentTime = Date.now()
       const deltaTime = currentTime - lastTime
 
-      // Only update every second
+      // Always check for time expiry, but only update elapsed time every second
       if (deltaTime >= 1000) {
         // Double-check that interview is still active
         const { isInterviewActive: currentIsActive } = useInterviewStore.getState()
@@ -192,30 +194,37 @@ export const IntervieweeTab = memo(() => {
 
         setTimeElapsed(prev => prev + 1)
         lastTime = currentTime
+      }
 
-        // Use store's tickTimer method
-        const timeUp = tickTimer()
+      // Always check for time expiry on every frame for precision
+      const timeUp = tickTimer()
 
-        if (timeUp) {
-          // Time's up - auto-submit answer if there's one
-          if (currentAnswer.trim()) {
-            // Submit the current answer and move to next question
-            submitAnswer(currentAnswer, timeElapsed)
-            setCurrentAnswer("")
-            setTimeElapsed(0)
-            // Handle async nextQuestion call
-            nextQuestion().catch((error: unknown) => {
-              console.error('Error moving to next question:', error)
-            })
-          } else {
-            // No answer provided - submit empty answer and move to next question
-            submitAnswer("", 0) // 0 score for no answer
-            // Handle async nextQuestion call
-            nextQuestion().catch((error: unknown) => {
-              console.error('Error moving to next question:', error)
-            })
-          }
-        }
+      if (timeUp && !hasAutoSubmitted) {
+        // Time's up - get the current textarea value directly from DOM for accuracy
+        const textareaElement = document.querySelector('textarea[placeholder="Type your answer here..."]') as HTMLTextAreaElement
+        const finalAnswer = textareaElement ? textareaElement.value : currentAnswer
+
+        // Prevent multiple submissions
+        setHasAutoSubmitted(true)
+
+        // Show visual feedback that time has run out
+        toast.info(`Time's up! ${finalAnswer.trim() ? 'Auto-submitting your answer.' : 'Auto-submitting (no answer provided).'}`, {
+          duration: 2000
+        })
+
+
+        // Submit the captured answer (preserve exact text as typed)
+        submitAnswer(finalAnswer, timeElapsed)
+        setCurrentAnswer("")
+        setTimeElapsed(0)
+
+        // Reset auto-submit flag after a brief delay to prevent race conditions
+        setTimeout(() => setHasAutoSubmitted(false), 100)
+
+        // Handle async nextQuestion call
+        nextQuestion().catch((error: unknown) => {
+          console.error('Error moving to next question:', error)
+        })
       }
 
       if (isInterviewActive) {
@@ -232,7 +241,7 @@ export const IntervieweeTab = memo(() => {
         cancelAnimationFrame(animationFrameId)
       }
     }
-  }, [isInterviewActive, tickTimer, submitAnswer, nextQuestion, currentAnswer])
+  }, [isInterviewActive, tickTimer, submitAnswer, nextQuestion])
 
   // Start question timer only after the question is displayed
   useEffect(() => {
@@ -271,6 +280,7 @@ export const IntervieweeTab = memo(() => {
       setCurrentAnswer("")
       setTimeElapsed(0)
       setIsTransitioningQuestions(false)
+      setHasAutoSubmitted(false)
     }
 
     window.addEventListener('resetResumeUpload', handleResetResumeUpload)
@@ -329,6 +339,7 @@ export const IntervieweeTab = memo(() => {
     // Clear local state to ensure fresh start
     setCurrentAnswer("")
     setTimeElapsed(0)
+    setHasAutoSubmitted(false)
 
     // Add the new candidate and get the ID directly
     const candidateId = addCandidate(candidateData)
@@ -406,6 +417,7 @@ export const IntervieweeTab = memo(() => {
     submitAnswer(currentAnswer, timeSpent)
     setCurrentAnswer("")
     setTimeElapsed(0)
+    setHasAutoSubmitted(false)
 
     // Show transition loading screen
     setIsTransitioningQuestions(true)

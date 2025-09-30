@@ -11,6 +11,7 @@ export interface InterviewState {
   isInterviewActive: boolean
   currentQuestion: Question | null
   timeRemaining: number
+  currentAnswer: string
   showWelcomeBackModal: boolean
   unfinishedSession: Candidate | null
   interviewStartTime: number | null
@@ -44,6 +45,7 @@ export interface InterviewActions {
   setIsSubmittingAnswer: (isSubmitting: boolean) => void
   setIsStartingInterview: (isStarting: boolean) => void
   setIsTransitioningQuestions: (isTransitioning: boolean) => void
+  setCurrentAnswer: (answer: string) => void
 }
 
 
@@ -56,6 +58,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
       isInterviewActive: false,
       currentQuestion: null,
       timeRemaining: 0,
+      currentAnswer: "",
       showWelcomeBackModal: false,
       unfinishedSession: null,
       interviewStartTime: null,
@@ -226,6 +229,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         set({
           currentQuestion: nextQuestion,
           timeRemaining: nextQuestion.timeLimit,
+          currentAnswer: "", // Clear the answer for the new question
           // Defer starting timer until UI confirms render
           questionStartTime: null
         })
@@ -299,6 +303,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
           currentCandidateId: null,
           currentQuestion: null,
           timeRemaining: 0,
+          currentAnswer: "",
           interviewStartTime: null,
           questionStartTime: null,
           showFeedbackCompletion: false,
@@ -332,7 +337,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
             set({ timeRemaining: remaining })
           }
 
-          // Auto-submit when time runs out
+          // Auto-submit when time runs out (check for <= 0 to catch when it goes negative)
           if (remaining <= 0) {
             return true // Indicates time is up
           }
@@ -403,6 +408,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
           currentCandidateId: null,
           currentQuestion: null,
           timeRemaining: 0,
+          currentAnswer: "",
           interviewStartTime: null,
           questionStartTime: null,
           showFeedbackCompletion: false,
@@ -451,6 +457,10 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         set({ isTransitioningQuestions: isTransitioning })
       },
 
+      setCurrentAnswer: (answer) => {
+        set({ currentAnswer: answer })
+      },
+
     }),
     {
       name: 'interview-storage',
@@ -460,6 +470,7 @@ export const useInterviewStore = create<InterviewState & InterviewActions>()(
         isInterviewActive: state.isInterviewActive,
         currentQuestion: state.currentQuestion,
         timeRemaining: state.timeRemaining,
+        currentAnswer: state.currentAnswer,
         interviewStartTime: state.interviewStartTime,
         questionStartTime: state.questionStartTime,
         showFeedbackCompletion: state.showFeedbackCompletion,
